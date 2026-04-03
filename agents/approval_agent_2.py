@@ -12,6 +12,10 @@ def run(pr_id, pr_number):
         save_output(pr_id, "approval_step_8", f"❌ Rejected by {user}")
         return False
 
-    save_output(pr_id, "approval_step_8",
-                "⏳ Awaiting approval (/approve-step 8)")
+    save_output(
+        pr_id,
+        "approval_step_8",
+        "⏳ Waiting for final approval\n\n👉 Comment `/approve-step 8`\n👉 Comment `/reject-step 8`"
+    )
+
     return False

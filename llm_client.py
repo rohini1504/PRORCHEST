@@ -11,18 +11,14 @@ def call_llm(prompt):
             "Content-Type": "application/json"
         },
         json={
-            "model": "llama-3.1-8b-instant",  # ✅ WORKING MODEL
-            "messages": [
-                {"role": "user", "content": prompt}
-            ]
+            "model": "llama-3.1-8b-instant",
+            "messages": [{"role": "user", "content": prompt}]
         }
     )
 
     data = response.json()
 
-    print("GROQ RESPONSE:", data)
-
     if "choices" not in data:
-        return f"GROQ ERROR: {data}"
+        return "LLM ERROR"
 
     return data["choices"][0]["message"]["content"]

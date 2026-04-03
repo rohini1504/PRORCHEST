@@ -1,19 +1,25 @@
-import time
 from github_client import get_pr
 
-def wait_for_approval(pr_number, step):
+
+def check_approval(pr_number, step):
+    """
+    Checks PR comments for approval/rejection commands.
+
+    Commands:
+    /approve-step X
+    /reject-step X
+    """
+
     pr = get_pr(pr_number)
+    comments = pr.get_issue_comments()
 
-    while True:
-        comments = pr.get_issue_comments()
+    for comment in comments:
+        body = comment.body.lower().strip()
 
-        for c in comments:
-            body = c.body.lower()
+        if f"/approve-step {step}" in body:
+            return "approved", comment.user.login
 
-            if f"/approve-step {step}" in body:
-                return "approved", c.user.login
+        if f"/reject-step {step}" in body:
+            return "rejected", comment.user.login
 
-            if f"/reject-step {step}" in body:
-                return "rejected", c.user.login
-
-        time.sleep(10)
+    return None, None

@@ -6,13 +6,28 @@ def run(pr_id, pr):
 
     comment = "## 🤖 PR Review Report\n\n"
 
-    comment += f"### ingestion\n{outputs.get('ingestion','')[:200]}...\n\n"
-    comment += f"### early_policy\n{outputs.get('early_policy','')}\n\n"
-    comment += f"### approval_step_3\n{outputs.get('approval_step_3','')}\n\n"
-    comment += f"### summary\n{outputs.get('summary','')}\n\n"
-    comment += f"### review\n{outputs.get('review','')}\n\n"
-    comment += f"### deep_policy\n{outputs.get('deep_policy','')}\n\n"
-    comment += f"### ask_agent\n{outputs.get('ask_agent','')}\n\n"
-    comment += f"### approval_step_8\n{outputs.get('approval_step_8','')}\n"
+    if "ingestion" in outputs:
+        comment += f"### ingestion\n{outputs['ingestion'][:200]}...\n\n"
+
+    if "early_policy" in outputs:
+        comment += f"### early_policy\n{outputs['early_policy']}\n\n"
+
+    if "approval_step_3" in outputs:
+        comment += f"### approval_step_3\n{outputs['approval_step_3']}\n\n"
+
+    if "summary" in outputs:
+        comment += f"### summary\n{outputs['summary']}\n\n"
+
+    if "review" in outputs:
+        comment += f"### review\n{outputs['review']}\n\n"
+
+    if "deep_policy" in outputs:
+        comment += f"### deep_policy\n{outputs['deep_policy']}\n\n"
+
+    if "ask_agent" in outputs:
+        comment += f"### ask_agent\n{outputs['ask_agent']}\n\n"
+
+    if "approval_step_8" in outputs:
+        comment += f"### approval_step_8\n{outputs['approval_step_8']}\n\n"
 
     post_comment(pr, comment)

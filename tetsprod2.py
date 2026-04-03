@@ -8,4 +8,4 @@ def login(username, password):
 
 def execute_query(query):
     import os
-    os.system(query)   # ⚠️ command injection
+    os.system(query)   # ⚠️ command injectio

@@ -4,11 +4,11 @@ def run(pr_id, diff):
     issues = []
 
     if "print(" in diff:
-        issues.append("⚠️ Debug print statements found")
+        issues.append("⚠️ Debug statements present")
 
-    if len(diff) < 20:
-        issues.append("⚠️ Very small PR")
+    if "== None" in diff:
+        issues.append("⚠️ Use 'is None' instead")
 
-    result = "\n".join(issues) if issues else "✅ Code follows policies"
+    result = "\n".join(issues) if issues else "✅ No violations"
     save_output(pr_id, "deep_policy", result)
     return result

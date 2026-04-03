@@ -25,24 +25,28 @@ def main(pr_number):
     diff = ingestion_agent.run(pr_id, pr)
     early_policy_agent.run(pr_id, pr)
 
-    # 🔹 SHOW PARTIAL OUTPUT BEFORE APPROVAL 1
+    # 🔹 STEP 2: APPROVAL 1 (SHOW MESSAGE + STOP)
+    approved = approval_agent_1.run(pr_id, pr_number)
+
+    # 🔹 SHOW CURRENT STATE
     coordinator_agent.run(pr_id, pr)
 
-    # 🔹 APPROVAL STEP 3
-    if not approval_agent_1.run(pr_id, pr_number):
-        return  # stop here until approved
+    if not approved:
+        return  # ⛔ STOP HERE until approval
 
-    # 🔹 STEP 2: remaining agents
+    # 🔹 STEP 3: MAIN AGENTS
     summarizer_agent.run(pr_id, diff)
     reviewer_agent.run(pr_id, diff)
     deep_policy_agent.run(pr_id, diff)
     ask_agent.run(pr_id)
 
-    # 🔹 SHOW OUTPUT BEFORE FINAL APPROVAL
+    # 🔹 STEP 4: APPROVAL 2
+    approved = approval_agent_2.run(pr_id, pr_number)
+
+    # 🔹 SHOW UPDATED STATE
     coordinator_agent.run(pr_id, pr)
 
-    # 🔹 APPROVAL STEP 8
-    if not approval_agent_2.run(pr_id, pr_number):
+    if not approved:
         return
 
     # 🔹 FINAL OUTPUT

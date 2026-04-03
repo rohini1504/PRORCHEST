@@ -2,14 +2,6 @@ from github_client import get_pr
 
 
 def check_approval(pr_number, step):
-    """
-    Checks PR comments for approval/rejection commands.
-
-    Commands:
-    /approve-step X
-    /reject-step X
-    """
-
     pr = get_pr(pr_number)
     comments = pr.get_issue_comments()
 

@@ -10,8 +10,8 @@ def run(pr_id, pr_number):
 
     if decision == "rejected":
         save_output(pr_id, "approval_step_8", f"❌ Rejected by {user}")
-        raise Exception("Stopped at step 8")
+        return False
 
     save_output(pr_id, "approval_step_8",
                 "⏳ Awaiting approval (/approve-step 8)")
-    raise Exception("Waiting for approval")
+    return False

@@ -20,8 +20,12 @@ def check_approval(pr_number, step):
     return None, None
 
 
-def check_qa_comment(pr_number):
+def check_qa_comment(pr):
     """
+    Now accepts a pr object directly instead of a pr_number.
+    Previously called get_pr(pr_number) internally — that was a redundant
+    get_repo().get_pull() API call since main.py already held a pr reference.
+
     Returns:
       ("approved", user)  — user typed /approve-step 8
       ("rejected", user)  — user typed /reject-step 8
@@ -29,19 +33,16 @@ def check_qa_comment(pr_number):
       ("question", text)  — user asked a question
       (None, None)        — no new human comment since last bot post
     """
-    pr = get_pr(pr_number)
     all_comments = list(pr.get_issue_comments())
 
     if not all_comments:
         return None, None
 
-    # Find index of last bot comment
     last_bot_idx = -1
     for i, c in enumerate(all_comments):
         if BOT_MARKER in c.body:
             last_bot_idx = i
 
-    # Only consider human comments posted AFTER the last bot comment
     new_human = [
         c for c in all_comments[last_bot_idx + 1:]
         if BOT_MARKER not in c.body

@@ -70,19 +70,28 @@ if status == "rejected":
 
 # ── Q&A MODE ──────────────────────────────────────────────────────────────────
 if status == "qa":
+
+    # Guard against duplicate GitHub Actions runs firing for the same comment.
+    # If state already moved to step 8, a second run snuck in — bail out early.
+    if state_step >= 8:
+        exit(0)
+
     ingested = ingestion.run(pr)
     diff = ingested["diff"]
 
     qa_status, payload = check_qa_comment(pr)
 
     if qa_status == "approved":
-        update_state(pr, 8, "running")
+        # Load cached outputs BEFORE updating state so a concurrent second run
+        # hits the guard above and exits instead of racing us here.
         data = load_cached_outputs()
+        update_state(pr, 8, "running")
         post_new(coordinator.build_approval_summary(data))
 
     elif qa_status == "rejected":
-        update_state(pr, 8, "rejected")
+        # Same order — load first, then update state, then post.
         data = load_cached_outputs()
+        update_state(pr, 8, "rejected")
         post_new(coordinator.build_rejection_summary("Step 8 (Final Approval)", data))
 
     elif qa_status == "done":

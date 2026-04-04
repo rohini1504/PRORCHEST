@@ -26,6 +26,7 @@ def _data_marker(agent_name):
 def post_agent_box(pr, agent_name, content, raw_data=None):
     """
     Post a comment box for this agent. Skip if already posted.
+    Returns True if a new comment was created, False if skipped.
     raw_data: optional string to store invisibly for later retrieval.
               Stored as base64 inside an HTML comment so it survives
               across runs without any DB.
@@ -33,7 +34,7 @@ def post_agent_box(pr, agent_name, content, raw_data=None):
     marker = _agent_marker(agent_name)
     for c in pr.get_issue_comments():
         if marker in c.body:
-            return  # already posted, never replace
+            return False  # already posted, never replace
 
     hidden = ""
     if raw_data is not None:
@@ -41,6 +42,7 @@ def post_agent_box(pr, agent_name, content, raw_data=None):
         hidden = f"\n{_data_marker(agent_name)}{encoded}-->"
 
     pr.create_issue_comment(f"{BOT_MARKER}\n{marker}{hidden}\n{content}")
+    return True
 
 def read_output(pr, agent_name):
     """

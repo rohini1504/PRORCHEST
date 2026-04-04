@@ -106,3 +106,22 @@ Write ONE sentence sign-off noting any caveats. Start with "Approved —"."""
 
     body = f"{summary}\n\n{badge_h} &nbsp; {badge_m} &nbsp; {badge_l}"
     return _box("✅", "Approved — Ready to Merge", body)
+
+
+# ── Q&A formatters (appended) ─────────────────────────────────────────────────
+
+def format_ask_agent(questions):
+    body = (
+        f"{questions}\n\n"
+        f"---\n"
+        f"💬 **Ask me anything about this PR** — reply with your question.\n"
+        f"Type `/done` when you're ready to proceed to final approval."
+    )
+    return _box("💬", "Questions for Author", body)
+
+def format_qa_answer(question, answer):
+    body = f"**Q:** {question}\n\n**A:** {answer}"
+    return _box("🤖", "Answer", body)
+
+def format_qa_done(user):
+    return _box("✅", "Q&A Complete", f"Proceeding to final approval. Thanks {user}.")

@@ -11,9 +11,12 @@ def get_pr(pr_number):
 def get_pr_diff(pr):
     files = pr.get_files()
     diff = ""
+
     for f in files:
-        diff += f"\nFile: {f.filename}\n{f.patch}\n"
-    return diff
+        if f.patch:
+            diff += f"\nFile: {f.filename}\n{f.patch}\n"
+
+    return diff if diff else "No meaningful code changes detected"
 
 def post_comment(pr, message):
     pr.create_issue_comment(message)

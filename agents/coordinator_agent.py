@@ -2,17 +2,17 @@ from llm_client import call_llm
 
 SYSTEM = "You are a senior engineering lead. Be concise and direct."
 
-def _box(label, title, body):
-    return f"### [{label}] {title}\n---\n{body}\n"
+def _box(agent, subtitle, body):
+    return f"### {agent}\n*{subtitle}*\n\n---\n{body}\n"
 
 
 # ── Per-agent formatters ───────────────────────────────────────────────────────
 
 def format_ingestion(result):
-    return _box("INGESTION AGENT", "Ingestion Agent — Pull Request Snapshot", result["metadata"])
+    return _box("INGESTION AGENT", "Pull Request Snapshot", result["metadata"])
 
 def format_early_policy(result):
-    return _box("EARLY POLICY AGENT", "Early Policy Agent — Pre-Flight Checks", result)
+    return _box("EARLY POLICY AGENT", "Pre-Flight Checks", result)
 
 def format_waiting_approval(step):
     body = (
@@ -22,13 +22,13 @@ def format_waiting_approval(step):
         f"| To Continue | `/approve-step {step}` |\n"
         f"| To Halt     | `/reject-step {step}`  |"
     )
-    return _box("APPROVAL AGENT", f"Approval Agent — Waiting on Your Decision (Step {step})", body)
+    return _box("APPROVAL AGENT", f"Waiting on Your Decision — Step {step}", body)
 
 def format_approval_granted(step, user):
-    return _box("APPROVAL AGENT", f"Approval Agent — Step {step} Approved by {user}", "Pipeline continuing.")
+    return _box("APPROVAL AGENT", f"Step {step} Approved by {user}", "Pipeline continuing.")
 
 def format_summary(result):
-    return _box("SUMMARIZER AGENT", "Summarizer Agent — What Changed", result)
+    return _box("SUMMARIZER AGENT", "What Changed", result)
 
 def format_review(result):
     def render_items(lst, show_fix):
@@ -67,10 +67,10 @@ def format_review(result):
         f"**MEDIUM SEVERITY**\n{render_items(medium, show_fix=True)}\n\n"
         f"**LOW SEVERITY**\n{render_items(low, show_fix=False)}"
     )
-    return _box("REVIEWER AGENT", "Reviewer Agent — Code Review Findings", body)
+    return _box("REVIEWER AGENT", "Code Review Findings", body)
 
 def format_deep_policy(result):
-    return _box("DEEP POLICY AGENT", "Deep Policy Agent — Policy & Security Scan", result)
+    return _box("DEEP POLICY AGENT", "Policy & Security Scan", result)
 
 
 # ── internal helpers ───────────────────────────────────────────────────────────
@@ -143,7 +143,7 @@ def build_approval_summary(data):
     paragraphs = [p for p in [verdict, change_para, review_para, policy_para] if p]
     body = "\n\n".join(paragraphs) + "\n\n---\n_Reviewed by PR Review Bot. Merge at your discretion._"
 
-    return _box("COORDINATOR AGENT", "Coordinator Agent — Review Complete, Approved", body)
+    return _box("COORDINATOR AGENT", "Review Complete, Approved", body)
 
 
 # ── REJECTED — clear narrative explaining exactly why ─────────────────────────
@@ -201,7 +201,7 @@ def build_rejection_summary(stage, data):
         f"Please address the issues above, push a new commit, or re-open this PR to restart the review pipeline."
     )
 
-    return _box("COORDINATOR AGENT", "Coordinator Agent — Review Complete, Rejected", body)
+    return _box("COORDINATOR AGENT", "Review Complete, Rejected", body)
 
 
 # ── Q&A formatters ────────────────────────────────────────────────────────────
@@ -226,11 +226,11 @@ def format_ask_agent(questions):
         f"Have your own question? Reply directly in this comment thread.\n\n"
         f"Type `/done` when you're ready to move to final approval."
     )
-    return _box("ASK AGENT", "Ask Agent — Questions About This PR", body)
+    return _box("ASK AGENT", "Questions About This PR", body)
 
 def format_qa_answer(question, answer):
     body = f"**Q:** {question}\n\n**A:** {answer}"
-    return _box("ASK AGENT", "Ask Agent — Here's What I Found", body)
+    return _box("ASK AGENT", "Here's What I Found", body)
 
 def format_qa_done(user):
-    return _box("ASK AGENT", "Ask Agent — Moving to Final Approval", f"Q&A complete. Thanks {user}. Proceeding to final approval.")
+    return _box("ASK AGENT", "Moving to Final Approval", f"Q&A complete. Thanks {user}. Proceeding to final approval.")

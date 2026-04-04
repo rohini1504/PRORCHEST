@@ -1,13 +1,21 @@
-from db import save_output
 from llm_client import call_llm
 
-def run(pr_id, diff):
-    summary = call_llm(f"""
-Summarize this PR in 2-3 lines only.
-Do not mention issues.
+def run(diff):
+    if not diff or diff.strip() == "":
+        return "No PR info available"
 
-{diff}
-""")
+    prompt = f"""
+Summarize this pull request diff.
 
-    save_output(pr_id, "summary", summary)
-    return summary
+Focus on:
+- what changed
+- why it matters
+- impacted areas
+
+Be concise but informative.
+
+DIFF:
+{diff[:4000]}
+"""
+
+    return call_llm(prompt, system_prompt="You are a senior software engineer writing PR summaries.")

@@ -4,13 +4,13 @@ def run(diff):
     flags = []
 
     checks = [
-        ("print(",      "⚠️ `print()` debug statement"),
-        ("console.log", "⚠️ `console.log` debug statement"),
-        ("TODO",        "⚠️ Unresolved TODO"),
-        ("FIXME",       "⚠️ Unresolved FIXME"),
-        ("password",    "🔴 Possible hardcoded credential"),
-        ("secret",      "🔴 Possible hardcoded secret"),
-        ("token",       "⚠️ Hardcoded token reference"),
+        ("print(",      "[DEBUG]   print() statement detected"),
+        ("console.log", "[DEBUG]   console.log statement detected"),
+        ("TODO",        "[WARN]    Unresolved TODO"),
+        ("FIXME",       "[WARN]    Unresolved FIXME"),
+        ("password",    "[CRITICAL] Possible hardcoded credential"),
+        ("secret",      "[CRITICAL] Possible hardcoded secret"),
+        ("token",       "[WARN]    Hardcoded token reference"),
     ]
 
     for pattern, message in checks:

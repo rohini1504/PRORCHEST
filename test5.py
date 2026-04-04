@@ -1,5 +1,5 @@
 def authenticate_user(token):
--    if token == "valid":
+   if token == "valid":
 -        return True
 -    return False
 +    try:

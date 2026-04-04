@@ -27,18 +27,24 @@ state_step, status = get_state(PR_NUMBER)
 def post_box(agent_name, content):
     post_agent_box(pr, agent_name, content)
 
-# ── ALREADY REJECTED ──────────────────────────────────────────────────────────
+# ── ALREADY REJECTED — just post coordinator rejection box ────────────────────
 if status == "rejected":
-    diff = ingestion.run(pr)
+    ingested = ingestion.run(pr)
     stage = "Step 3 (Early Policy)" if state_step < 8 else "Step 8 (Final Approval)"
-    data = {"early_policy": early_policy.run(pr), "diff": diff}
+    data = {
+        "early_policy": early_policy.run(pr),
+        "diff": ingested["diff"],
+    }
     post_comment(pr, coordinator.build_rejection_summary(stage, data))
     exit(0)
 
-# ── STEP 1: Ingestion + Early Policy ─────────────────────────────────────────
-diff = ingestion.run(pr)
-post_box("ingestion", coordinator.format_ingestion(diff))
+# ── STEP 1: Ingestion ─────────────────────────────────────────────────────────
+ingested = ingestion.run(pr)
+diff = ingested["diff"]
 
+post_box("ingestion", coordinator.format_ingestion(ingested))
+
+# ── STEP 2: Early Policy ──────────────────────────────────────────────────────
 early = early_policy.run(pr)
 post_box("early_policy", coordinator.format_early_policy(early))
 
@@ -47,15 +53,17 @@ approved_3, msg_3 = approval_step_3.run(PR_NUMBER)
 
 if not approved_3:
     if "Rejected" in msg_3:
-        data = {"early_policy": early, "diff": diff}
+        data = {"early_policy": early}
         post_comment(pr, coordinator.build_rejection_summary("Step 3 (Early Policy)", data))
     else:
         post_box("approval_step_3", coordinator.format_waiting_approval(3))
     exit(0)
 
-post_box("approval_step_3", f"## ✅ Step 3 Approved\n\n{msg_3}")
+# Extract approving user from msg e.g. "✅ Approved by alice"
+approver_3 = msg_3.split("by ")[-1] if "by " in msg_3 else "reviewer"
+post_box("approval_step_3", coordinator.format_approval_granted(3, approver_3))
 
-# ── STEP 2: Full analysis ─────────────────────────────────────────────────────
+# ── STEP 3: Analysis agents ───────────────────────────────────────────────────
 summary = summarizer.run(diff)
 post_box("summary", coordinator.format_summary(summary))
 
@@ -73,12 +81,12 @@ approved_8, msg_8 = approval_step_8.run(PR_NUMBER)
 
 if not approved_8:
     if "Rejected" in msg_8:
-        data = {"summary": summary, "review": review, "deep_policy": dp, "ask_agent": ask}
+        data = {"summary": summary, "review": review, "deep_policy": dp}
         post_comment(pr, coordinator.build_rejection_summary("Step 8 (Final Approval)", data))
     else:
         post_box("approval_step_8", coordinator.format_waiting_approval(8))
     exit(0)
 
-# ── FINAL: Coordinator approval summary ──────────────────────────────────────
+# ── FINAL: Coordinator approval summary ───────────────────────────────────────
 data = {"summary": summary, "review": review, "deep_policy": dp, "ask_agent": ask}
 post_comment(pr, coordinator.build_approval_summary(data))

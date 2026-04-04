@@ -4,14 +4,13 @@ def run(diff):
     if not diff or diff.strip() == "":
         return "No code changes to summarize."
 
-    prompt = f"""Summarize this PR diff in exactly 3 sentences:
-1. What was changed.
-2. Why it likely matters.
-3. Which areas of the codebase are affected.
+    prompt = f"""Summarize this PR diff in 2 lines max:
+Line 1: What changed (start with a verb, e.g. "Replaces X with Y")
+Line 2: Impact in one short phrase (e.g. "Affects auth middleware")
 
-No bullet points. No headers. Plain prose only.
+No fluff. No headers.
 
 DIFF:
 {diff[:4000]}"""
 
-    return call_llm(prompt, system_prompt="You are a senior engineer writing concise PR summaries.")
+    return call_llm(prompt, system_prompt="You are a senior engineer. Be extremely brief.")

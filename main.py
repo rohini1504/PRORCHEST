@@ -1,55 +1,83 @@
-import sys
-from github_client import get_pr
-from db import clear_outputs
+import os
+from github_client import get_pr, upsert_comment, get_latest_comment
+from db import init_db, get_state, update_state
 
-from agents import (
-    ingestion_agent,
-    early_policy_agent,
-    approval_agent_1,
-    summarizer_agent,
-    reviewer_agent,
-    deep_policy_agent,
-    ask_agent,
-    approval_agent_2,
-    coordinator_agent
-)
+from agents import ingestion, early_policy, summarizer, reviewer, deep_policy, ask_agent, coordinator
 
+init_db()
 
-def main(pr_number):
-    pr = get_pr(pr_number)
-    pr_id = str(pr_number)
+PR_NUMBER = int(os.getenv("PR_NUMBER"))
+pr = get_pr(PR_NUMBER)
 
-    clear_outputs(pr_id)
+state_step, status = get_state(PR_NUMBER)
+latest_comment = get_latest_comment(pr)
 
-    # STEP 1
-    diff = ingestion_agent.run(pr_id, pr)
-    early_policy_agent.run(pr_id, pr)
+def check_approval(step):
+    if f"/approve-step {step}" in latest_comment:
+        return "approved"
+    if f"/reject-step {step}" in latest_comment:
+        return "rejected"
+    return "waiting"
 
-    approved = approval_agent_1.run(pr_id, pr_number)
+data = {}
 
-    # 🔥 ALWAYS SHOW REPORT
-    coordinator_agent.run(pr_id, pr)
+# ---------------- STEP 1 ----------------
+if state_step < 3:
+    data["ingestion"] = ingestion.run(pr)
+    data["early_policy"] = early_policy.run(pr)
 
-    if not approved:
-        return
+    decision = check_approval(3)
 
-    # STEP 2
-    summarizer_agent.run(pr_id, diff)
-    reviewer_agent.run(pr_id, diff)
-    deep_policy_agent.run(pr_id, diff)
-    ask_agent.run(pr_id)
+    if decision == "waiting":
+        data["approval_step_3"] = "⏳ Waiting for approval\n👉 Comment /approve-step 3"
+        upsert_comment(pr, coordinator.build_report(data))
+        exit(0)
 
-    approved = approval_agent_2.run(pr_id, pr_number)
+    if decision == "rejected":
+        data["approval_step_3"] = "❌ Rejected"
+        update_state(PR_NUMBER, 3, "rejected")
+        upsert_comment(pr, coordinator.build_report(data))
+        exit(0)
 
-    # 🔥 UPDATE REPORT AGAIN
-    coordinator_agent.run(pr_id, pr)
+    update_state(PR_NUMBER, 3)
 
-    if not approved:
-        return
+# ---------------- STEP 2 ----------------
+if state_step < 8:
+    diff = ingestion.run(pr)
 
-    # FINAL
-    coordinator_agent.run(pr_id, pr)
+    data["summary"] = summarizer.run(diff)
 
+    review = reviewer.run(diff)
+    data["review"] = f"""
+HIGH:
+{chr(10).join(review['HIGH'])}
 
-if __name__ == "__main__":
-    main(int(sys.argv[1]))
+MEDIUM:
+{chr(10).join(review['MEDIUM'])}
+
+LOW:
+{chr(10).join(review['LOW'])}
+"""
+
+    data["deep_policy"] = deep_policy.run(diff)
+    data["ask_agent"] = ask_agent.run()
+
+    decision = check_approval(8)
+
+    if decision == "waiting":
+        data["approval_step_8"] = "⏳ Waiting for approval\n👉 Comment /approve-step 8"
+        upsert_comment(pr, coordinator.build_report(data))
+        exit(0)
+
+    if decision == "rejected":
+        data["approval_step_8"] = "❌ Rejected"
+        update_state(PR_NUMBER, 8, "rejected")
+        upsert_comment(pr, coordinator.build_report(data))
+        exit(0)
+
+    update_state(PR_NUMBER, 8)
+
+# ---------------- FINAL ----------------
+data["final"] = "✅ PR Approved and Ready to Merge"
+
+upsert_comment(pr, coordinator.build_report(data))

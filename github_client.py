@@ -1,43 +1,27 @@
-import os
 from github import Github
+import os
 
 MARKER = "<!-- PR_REVIEW_BOT -->"
 
+def get_client():
+    return Github(os.getenv("GITHUB_TOKEN"))
 
 def get_repo():
-    g = Github(os.getenv("GITHUB_TOKEN"))
-    return g.get_repo(os.getenv("REPO_NAME"))
-
+    return get_client().get_repo(os.getenv("GITHUB_REPOSITORY"))
 
 def get_pr(pr_number):
     return get_repo().get_pull(pr_number)
 
+def get_latest_comment(pr):
+    comments = list(pr.get_issue_comments())
+    return comments[-1].body if comments else ""
 
-def get_pr_diff(pr):
-    files = pr.get_files()
-    diff = ""
+def upsert_comment(pr, body):
+    comments = list(pr.get_issue_comments())
 
-    for f in files:
-        if f.patch:
-            diff += f"\nFile: {f.filename}\n{f.patch}\n"
+    for c in comments:
+        if MARKER in c.body:
+            c.edit(MARKER + "\n" + body)
+            return
 
-    return diff if diff else "No meaningful code changes detected"
-
-
-def upsert_comment(pr, message):
-    """
-    Always keep ONE bot comment.
-    Update if exists, else create.
-    """
-    try:
-        comments = pr.get_issue_comments()
-
-        for c in comments:
-            if MARKER in c.body:
-                c.edit(f"{MARKER}\n{message}")
-                return
-
-        pr.create_issue_comment(f"{MARKER}\n{message}")
-
-    except Exception as e:
-        print("COMMENT ERROR:", str(e))
+    pr.create_issue_comment(MARKER + "\n" + body)

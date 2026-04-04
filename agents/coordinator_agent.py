@@ -1,35 +1,23 @@
-from db import get_outputs
-from github_client import upsert_comment
+def build_report(data):
+    sections = ["## 🤖 PR Review Report"]
 
+    for key, value in data.items():
+        if not value:
+            continue
 
-def run(pr_id, pr):
-    outputs = dict(get_outputs(pr_id))
+        if key == "review" and isinstance(value, dict):
+            formatted = f"""
+HIGH:
+{chr(10).join(value.get("HIGH", []))}
 
-    comment = "## 🤖 PR Review Report\n\n"
+MEDIUM:
+{chr(10).join(value.get("MEDIUM", []))}
 
-    if "ingestion" in outputs:
-        comment += f"### ingestion\n{outputs['ingestion'][:200]}...\n\n"
+LOW:
+{chr(10).join(value.get("LOW", []))}
+"""
+            sections.append(f"\n### {key}\n{formatted}")
+        else:
+            sections.append(f"\n### {key}\n{value}")
 
-    if "early_policy" in outputs:
-        comment += f"### early_policy\n{outputs['early_policy']}\n\n"
-
-    if "approval_step_3" in outputs:
-        comment += f"### approval_step_3\n{outputs['approval_step_3']}\n\n"
-
-    if "summary" in outputs:
-        comment += f"### summary\n{outputs['summary']}\n\n"
-
-    if "review" in outputs:
-        comment += f"### review\n{outputs['review']}\n\n"
-
-    if "deep_policy" in outputs:
-        comment += f"### deep_policy\n{outputs['deep_policy']}\n\n"
-
-    if "ask_agent" in outputs:
-        comment += f"### ask_agent\n{outputs['ask_agent']}\n\n"
-
-    if "approval_step_8" in outputs:
-        comment += f"### approval_step_8\n{outputs['approval_step_8']}\n\n"
-
-    # 🔥 ALWAYS update same comment
-    upsert_comment(pr, comment)
+    return "\n".join(sections)

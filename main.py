@@ -24,45 +24,57 @@ pr = get_pr(PR_NUMBER)
 
 state_step, status = get_state(PR_NUMBER)
 
-# ❌ STOP if rejected
-if status == "rejected":
-    data = {
-        "final": "❌ PR was rejected. Pipeline stopped."
-    }
-    upsert_comment(pr, coordinator.build_report(data))
-    exit(0)
-
 data = {}
 
-# ---------------- STEP 1 ----------------
-if state_step < 3:
+# ---------------- REJECTION HANDLING ----------------
+if status == "rejected":
     diff = ingestion.run(pr)
 
     data["ingestion"] = diff
     data["early_policy"] = early_policy.run(pr)
 
-    approved, msg = approval_step_3.run(PR_NUMBER)
-    data["approval_step_3"] = msg
+    if state_step >= 3:
+        data["approval_step_3"] = "✅ Approved"
 
-    if not approved:
-        upsert_comment(pr, coordinator.build_report(data))
-        exit(0)
+    if state_step >= 8:
+        data["summary"] = summarizer.run(diff)
+        data["review"] = reviewer.run(diff)
+        data["deep_policy"] = deep_policy.run(diff)
+        data["ask_agent"] = ask_agent.run(diff)
+        data["approval_step_8"] = "❌ Rejected"
 
-# ---------------- STEP 2 ----------------
-if state_step < 8:
-    diff = ingestion.run(pr)
+    data["final"] = "❌ PR Review Halted due to rejection"
 
-    data["summary"] = summarizer.run(diff)
-    data["review"] = reviewer.run(diff)
-    data["deep_policy"] = deep_policy.run(diff)
-    data["ask_agent"] = ask_agent.run(diff)
+    upsert_comment(pr, coordinator.build_report(data))
+    exit(0)
 
-    approved, msg = approval_step_8.run(PR_NUMBER)
-    data["approval_step_8"] = msg
+# ---------------- STEP 1 ----------------
+diff = ingestion.run(pr)
 
-    if not approved:
-        upsert_comment(pr, coordinator.build_report(data))
-        exit(0)
+data["ingestion"] = diff
+data["early_policy"] = early_policy.run(pr)
+
+approved_3, msg_3 = approval_step_3.run(PR_NUMBER)
+data["approval_step_3"] = msg_3
+
+# 👉 STOP HERE if not approved
+if not approved_3:
+    upsert_comment(pr, coordinator.build_report(data))
+    exit(0)
+
+# ---------------- STEP 2 (APPENDED, NOT REPLACING) ----------------
+data["summary"] = summarizer.run(diff)
+data["review"] = reviewer.run(diff)
+data["deep_policy"] = deep_policy.run(diff)
+data["ask_agent"] = ask_agent.run(diff)
+
+approved_8, msg_8 = approval_step_8.run(PR_NUMBER)
+data["approval_step_8"] = msg_8
+
+# 👉 STOP HERE if not approved
+if not approved_8:
+    upsert_comment(pr, coordinator.build_report(data))
+    exit(0)
 
 # ---------------- FINAL ----------------
 data["final"] = "✅ PR Approved and Ready to Merge"

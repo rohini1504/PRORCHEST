@@ -1,21 +1,38 @@
-from db import save_output
+from db import save_output, get_state, update_state
 from approval import check_approval
 
+STEP = 3
+
 def run(pr_id, pr_number):
-    decision, user = check_approval(pr_number, 3)
+    last_step, status = get_state(pr_number)
+
+    # ✅ Prevent re-processing
+    if status == "rejected":
+        return False
+
+    if last_step >= STEP:
+        return True
+
+    decision, user = check_approval(pr_number, STEP)
 
     if decision == "approved":
-        save_output(pr_id, "approval_step_3", f"✅ Approved by {user}")
+        msg = f"✅ Approved by {user}"
+        save_output(pr_id, "approval_step_3", msg)
+        update_state(pr_number, STEP)
         return True
 
     if decision == "rejected":
-        save_output(pr_id, "approval_step_3", f"❌ Rejected by {user}")
+        msg = f"❌ Rejected by {user}"
+        save_output(pr_id, "approval_step_3", msg)
+        update_state(pr_number, STEP, "rejected")
         return False
 
-    save_output(
-        pr_id,
-        "approval_step_3",
-        "⏳ Waiting for approval\n\n👉 Comment `/approve-step 3`\n👉 Comment `/reject-step 3`"
+    # ⏳ Waiting state
+    msg = (
+        "⏳ Waiting for approval\n\n"
+        "👉 Comment `/approve-step 3`\n"
+        "👉 Comment `/reject-step 3`"
     )
 
+    save_output(pr_id, "approval_step_3", msg)
     return False

@@ -14,44 +14,36 @@ from agents import (
     coordinator_agent
 )
 
-
 def main(pr_number):
     pr = get_pr(pr_number)
     pr_id = str(pr_number)
 
-    clear_outputs(pr_id)
+    last_step = get_last_step(pr_id)
 
-    # 🔹 STEP 1: ingestion + early policy
-    diff = ingestion_agent.run(pr_id, pr)
-    early_policy_agent.run(pr_id, pr)
+    # 🔹 FIRST RUN
+    if last_step is None:
+        diff = ingestion_agent.run(pr_id, pr)
+        early_policy_agent.run(pr_id, pr)
 
-    # 🔹 STEP 2: APPROVAL 1 (SHOW MESSAGE + STOP)
-    approved = approval_agent_1.run(pr_id, pr_number)
+        approved = approval_agent_1.run(pr_id, pr_number)
+        coordinator_agent.run(pr_id, pr)
 
-    # 🔹 SHOW CURRENT STATE
-    coordinator_agent.run(pr_id, pr)
-
-    if not approved:
-        return  # ⛔ STOP HERE until approval
-
-    # 🔹 STEP 3: MAIN AGENTS
-    summarizer_agent.run(pr_id, diff)
-    reviewer_agent.run(pr_id, diff)
-    deep_policy_agent.run(pr_id, diff)
-    ask_agent.run(pr_id)
-
-    # 🔹 STEP 4: APPROVAL 2
-    approved = approval_agent_2.run(pr_id, pr_number)
-
-    # 🔹 SHOW UPDATED STATE
-    coordinator_agent.run(pr_id, pr)
-
-    if not approved:
         return
 
-    # 🔹 FINAL OUTPUT
-    coordinator_agent.run(pr_id, pr)
+    # 🔹 AFTER APPROVAL 3
+    if last_step == "approval_step_3":
+        diff = ingestion_agent.run(pr_id, pr)
 
+        summarizer_agent.run(pr_id, diff)
+        reviewer_agent.run(pr_id, diff)
+        deep_policy_agent.run(pr_id, diff)
+        ask_agent.run(pr_id)
 
-if __name__ == "__main__":
-    main(int(sys.argv[1]))
+        approved = approval_agent_2.run(pr_id, pr_number)
+        coordinator_agent.run(pr_id, pr)
+
+        return
+
+    # 🔹 FINAL
+    if last_step == "approval_step_8":
+        coordinator_agent.run(pr_id, pr)

@@ -26,22 +26,24 @@ state_step, status = get_state(PR_NUMBER)
 
 data = {}
 
-# ---------------- REJECTION HANDLING ----------------
+# ---------------- REJECTION HANDLING (FIXED) ----------------
 if status == "rejected":
     diff = ingestion.run(pr)
 
+    # Always rebuild full pipeline view
     data["ingestion"] = diff
     data["early_policy"] = early_policy.run(pr)
 
-    if state_step >= 3:
-        data["approval_step_3"] = "✅ Approved"
+    # Since rejection happens after step 3, we assume it was approved
+    data["approval_step_3"] = "✅ Approved"
 
-    if state_step >= 8:
-        data["summary"] = summarizer.run(diff)
-        data["review"] = reviewer.run(diff)
-        data["deep_policy"] = deep_policy.run(diff)
-        data["ask_agent"] = ask_agent.run(diff)
-        data["approval_step_8"] = "❌ Rejected"
+    # Always show step 2 content
+    data["summary"] = summarizer.run(diff)
+    data["review"] = reviewer.run(diff)
+    data["deep_policy"] = deep_policy.run(diff)
+    data["ask_agent"] = ask_agent.run(diff)
+
+    data["approval_step_8"] = "❌ Rejected"
 
     data["final"] = "❌ PR Review Halted due to rejection"
 
@@ -57,12 +59,12 @@ data["early_policy"] = early_policy.run(pr)
 approved_3, msg_3 = approval_step_3.run(PR_NUMBER)
 data["approval_step_3"] = msg_3
 
-# 👉 STOP HERE if not approved
+# STOP if step 3 not approved
 if not approved_3:
     upsert_comment(pr, coordinator.build_report(data))
     exit(0)
 
-# ---------------- STEP 2 (APPENDED, NOT REPLACING) ----------------
+# ---------------- STEP 2 ----------------
 data["summary"] = summarizer.run(diff)
 data["review"] = reviewer.run(diff)
 data["deep_policy"] = deep_policy.run(diff)
@@ -71,7 +73,7 @@ data["ask_agent"] = ask_agent.run(diff)
 approved_8, msg_8 = approval_step_8.run(PR_NUMBER)
 data["approval_step_8"] = msg_8
 
-# 👉 STOP HERE if not approved
+# STOP if step 8 not approved
 if not approved_8:
     upsert_comment(pr, coordinator.build_report(data))
     exit(0)

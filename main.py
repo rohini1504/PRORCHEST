@@ -27,11 +27,7 @@ DELAY = 2
 init_db()
 
 PR_NUMBER = int(os.getenv("PR_NUMBER"))
-
-# Single get_pr() call — reused everywhere; never call get_pr() again.
 pr = get_pr(PR_NUMBER)
-
-# get_state now accepts the pr object directly — no second get_pull() inside db.py
 state_step, status = get_state(pr)
 
 def _already_posted(agent_name):
@@ -39,7 +35,6 @@ def _already_posted(agent_name):
     return any(marker in c.body for c in pr.get_issue_comments())
 
 def post_box(agent_name, content, raw_data=None):
-    """Post agent box and sleep only if a new comment was actually created."""
     if not _already_posted(agent_name):
         post_agent_box(pr, agent_name, content, raw_data=raw_data)
         time.sleep(DELAY)
@@ -49,10 +44,6 @@ def post_new(content):
     time.sleep(DELAY)
 
 def load_cached_outputs():
-    """
-    Read all agent outputs in ONE get_issue_comments() call.
-    Previously called read_output() 4 times = 4 separate API round-trips.
-    """
     outputs = read_all_outputs(pr, ["summary", "review", "deep_policy", "ask_agent"])
     review_raw = outputs.get("review")
     review = json.loads(review_raw) if review_raw else {"HIGH": [], "MEDIUM": [], "LOW": []}
@@ -82,11 +73,9 @@ if status == "qa":
     ingested = ingestion.run(pr)
     diff = ingested["diff"]
 
-    # check_qa_comment now accepts the pr object — no third get_pr() call inside
     qa_status, payload = check_qa_comment(pr)
 
     if qa_status == "approved":
-        # update_state accepts pr object — no fourth get_pull() inside db.py
         update_state(pr, 8, "running")
         data = load_cached_outputs()
         post_new(coordinator.build_approval_summary(data))
@@ -98,7 +87,9 @@ if status == "qa":
 
     elif qa_status == "done":
         post_new(coordinator.format_qa_done(payload))
-        update_state(pr, state_step, "running")
+        # FIX: hardcode step=3 — state_step read at startup is stale (was 0)
+        # because step=3 was written in a previous Actions run, not this one.
+        update_state(pr, 3, "running")
         post_box("approval_step_8", coordinator.format_waiting_approval(8))
 
     elif qa_status == "question":
@@ -143,5 +134,6 @@ post_box("deep_policy", coordinator.format_deep_policy(dp), raw_data=dp)
 questions = ask_agent.run(diff)
 post_box("ask_agent", coordinator.format_ask_agent(questions), raw_data=questions)
 
-# ── Enter Q&A mode ────────────────────────────────────────────────────────────
-update_state(pr, state_step, "qa")
+# ── Enter Q&A mode ─────────────────────────────────────────────────────────────
+# FIX: hardcode step=3 — state_step is stale (0) from startup read.
+update_state(pr, 3, "qa")

@@ -31,5 +31,5 @@ def run(pr_id, pr):
     if "approval_step_8" in outputs:
         comment += f"### approval_step_8\n{outputs['approval_step_8']}\n\n"
 
-    # 🔥 THIS IS THE FIX
+    # 🔥 ALWAYS update same comment
     upsert_comment(pr, comment)

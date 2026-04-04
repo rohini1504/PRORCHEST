@@ -7,14 +7,14 @@ def check_approval(pr_number, step):
     if not comments:
         return None, None
 
-    # ✅ ONLY CHECK LATEST COMMENT
-    last_comment = comments[-1]
-    body = last_comment.body.lower().strip()
+    latest = comments[-1]
+    body = latest.body.strip()
+    user = latest.user.login
 
-    if f"/approve-step {step}" in body:
-        return "approved", last_comment.user.login
+    if body.startswith(f"/approve-step {step}"):
+        return "approved", user
 
-    if f"/reject-step {step}" in body:
-        return "rejected", last_comment.user.login
+    if body.startswith(f"/reject-step {step}"):
+        return "rejected", user
 
     return None, None

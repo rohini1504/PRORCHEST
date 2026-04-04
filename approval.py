@@ -3,39 +3,31 @@ from github_client import get_pr
 BOT_MARKER = "<!-- PR_REVIEW_BOT -->"
 
 def _human_comments(pr):
-    """Return all comments NOT posted by the bot, in order."""
-    return [
-        c for c in pr.get_issue_comments()
-        if BOT_MARKER not in c.body
-    ]
+    return [c for c in pr.get_issue_comments() if BOT_MARKER not in c.body]
 
 def check_approval(pr_number, step):
-    """Check if the latest human comment is an approve/reject for this step."""
     pr = get_pr(pr_number)
     comments = _human_comments(pr)
-
     if not comments:
         return None, None
-
     latest = comments[-1]
     body = latest.body.strip()
     user = latest.user.login
-
     if body.startswith(f"/approve-step {step}"):
         return "approved", user
-
     if body.startswith(f"/reject-step {step}"):
         return "rejected", user
-
     return None, None
 
 
 def check_qa_comment(pr_number):
     """
-    Called when status=qa. Reads the latest human comment and returns:
+    Returns:
+      ("approved", user)  — user typed /approve-step 8
+      ("rejected", user)  — user typed /reject-step 8
       ("done", user)      — user typed /done
-      ("question", text)  — user asked something
-      (None, None)        — no new human comment since bot last posted
+      ("question", text)  — user asked a question
+      (None, None)        — no new human comment since last bot post
     """
     pr = get_pr(pr_number)
     all_comments = list(pr.get_issue_comments())
@@ -43,13 +35,13 @@ def check_qa_comment(pr_number):
     if not all_comments:
         return None, None
 
-    # Find the last bot comment index
+    # Find index of last bot comment
     last_bot_idx = -1
     for i, c in enumerate(all_comments):
         if BOT_MARKER in c.body:
             last_bot_idx = i
 
-    # Any human comments AFTER the last bot comment?
+    # Only consider human comments posted AFTER the last bot comment
     new_human = [
         c for c in all_comments[last_bot_idx + 1:]
         if BOT_MARKER not in c.body
@@ -62,6 +54,10 @@ def check_qa_comment(pr_number):
     body = latest.body.strip()
     user = latest.user.login
 
+    if body.startswith("/approve-step 8"):
+        return "approved", user
+    if body.startswith("/reject-step 8"):
+        return "rejected", user
     if body.lower().startswith("/done"):
         return "done", user
 

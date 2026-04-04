@@ -4,7 +4,7 @@ import time
 import json
 sys.path.append(os.getcwd())
 
-from github_client import get_pr, post_agent_box, post_comment, read_output
+from github_client import get_pr, post_agent_box, post_comment, read_output, _agent_marker
 from db import init_db, get_state, update_state
 from approval import check_approval, check_qa_comment
 
@@ -29,9 +29,16 @@ pr = get_pr(PR_NUMBER)
 
 state_step, status = get_state(PR_NUMBER)
 
+def _already_posted(agent_name):
+    """Return True if this agent's comment already exists on the PR."""
+    marker = _agent_marker(agent_name)
+    return any(marker in c.body for c in pr.get_issue_comments())
+
 def post_box(agent_name, content, raw_data=None):
-    post_agent_box(pr, agent_name, content, raw_data=raw_data)
-    time.sleep(DELAY)
+    """Post agent box and sleep only if a new comment was actually created."""
+    if not _already_posted(agent_name):
+        post_agent_box(pr, agent_name, content, raw_data=raw_data)
+        time.sleep(DELAY)
 
 def post_new(content):
     post_comment(pr, content)
@@ -47,11 +54,19 @@ def load_cached_outputs():
     review = json.loads(review_raw) if review_raw else {"HIGH": [], "MEDIUM": [], "LOW": []}
 
     return {
-        "summary":   summary_raw or "",
-        "review":    review,
+        "summary":     summary_raw or "",
+        "review":      review,
         "deep_policy": dp_raw or "",
-        "ask_agent": questions_raw or "",
+        "ask_agent":   questions_raw or "",
     }
+
+
+# ── GUARD: pipeline already completed ─────────────────────────────────────────
+# If step 8 is done and status is "running", there is nothing left to do.
+# Without this guard the entire bottom half of the pipeline re-executes on
+# every subsequent Actions trigger, firing 4 LLM calls and ~12 s of sleeps.
+if state_step >= 8 and status == "running":
+    exit(0)
 
 
 # ── REJECTED ──────────────────────────────────────────────────────────────────
@@ -71,7 +86,6 @@ if status == "qa":
 
     if qa_status == "approved":
         update_state(PR_NUMBER, 8, "running")
-        # Read from cached comments — zero LLM calls
         data = load_cached_outputs()
         post_new(coordinator.build_approval_summary(data))
 

@@ -1,9 +1,19 @@
-from db import save_output
+from llm_client import call_llm
 
-def run(pr_id):
-    questions = """- What is expected behavior?
-- Are edge cases handled?
-- Is input validated?"""
+def run(diff):
+    prompt = f"""
+Generate developer questions for this PR.
 
-    save_output(pr_id, "ask_agent", questions)
-    return questions
+Focus on:
+- edge cases
+- performance
+- missing tests
+- design decisions
+
+Return 5-7 sharp questions.
+
+DIFF:
+{diff[:3000]}
+"""
+
+    return call_llm(prompt, system_prompt="You are a senior reviewer preparing PR discussion questions.")

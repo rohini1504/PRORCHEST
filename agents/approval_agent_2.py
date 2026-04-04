@@ -13,20 +13,20 @@ def run(pr):
 
     if decision == "approved":
         update_state(pr, STEP, "running")
-        return True, f"✅ Approved by {user}"
+        return True, f"Approved by {user}"
 
     if decision == "rejected":
         update_state(pr, STEP, "rejected")
-        return False, f"❌ Rejected by {user}"
+        return False, f"Rejected by {user}"
 
     if status == "rejected":
-        return False, "❌ PR already rejected"
+        return False, "PR already rejected"
 
     if last_step >= STEP:
-        return True, "✅ Already approved"
+        return True, "Already approved"
 
     return False, (
-        "⏳ Waiting for final approval\n\n"
-        "👉 Comment `/approve-step 8`\n"
-        "👉 Comment `/reject-step 8`"
+        "Waiting for final approval\n\n"
+        "Comment `/approve-step 8` to continue\n"
+        "Comment `/reject-step 8` to halt"
     )

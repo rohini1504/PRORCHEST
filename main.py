@@ -1,9 +1,11 @@
 import sys
 import os
+import time
 sys.path.append(os.getcwd())
 
 from github_client import get_pr, post_agent_box, post_comment
-from db import init_db, get_state
+from db import init_db, get_state, update_state
+from approval import check_approval, check_qa_comment
 
 from agents import (
     ingestion,
@@ -17,6 +19,8 @@ from agents import (
     approval_step_8
 )
 
+DELAY = 3  # seconds between bot posts
+
 init_db()
 
 PR_NUMBER = int(os.getenv("PR_NUMBER"))
@@ -26,22 +30,67 @@ state_step, status = get_state(PR_NUMBER)
 
 def post_box(agent_name, content):
     post_agent_box(pr, agent_name, content)
+    time.sleep(DELAY)
 
-# ── ALREADY REJECTED — just post coordinator rejection box ────────────────────
+def post_new(content):
+    post_comment(pr, content)
+    time.sleep(DELAY)
+
+def run_final_approval(diff, summary, review, dp, questions):
+    """Run approval gate 2 and post final summary if approved."""
+    approved_8, msg_8 = approval_step_8.run(PR_NUMBER)
+
+    if not approved_8:
+        if "Rejected" in msg_8:
+            data = {"summary": summary, "review": review, "deep_policy": dp}
+            post_new(coordinator.build_rejection_summary("Step 8 (Final Approval)", data))
+        else:
+            post_box("approval_step_8", coordinator.format_waiting_approval(8))
+        return
+
+    data = {"summary": summary, "review": review, "deep_policy": dp, "ask_agent": questions}
+    post_new(coordinator.build_approval_summary(data))
+
+
+# ── REJECTED ──────────────────────────────────────────────────────────────────
 if status == "rejected":
     ingested = ingestion.run(pr)
     stage = "Step 3 (Early Policy)" if state_step < 8 else "Step 8 (Final Approval)"
-    data = {
-        "early_policy": early_policy.run(pr),
-        "diff": ingested["diff"],
-    }
-    post_comment(pr, coordinator.build_rejection_summary(stage, data))
+    data = {"early_policy": early_policy.run(pr)}
+    post_new(coordinator.build_rejection_summary(stage, data))
     exit(0)
+
+
+# ── Q&A MODE ──────────────────────────────────────────────────────────────────
+if status == "qa":
+    ingested = ingestion.run(pr)
+    diff = ingested["diff"]
+
+    qa_status, payload = check_qa_comment(PR_NUMBER)
+
+    if qa_status == "done":
+        post_new(coordinator.format_qa_done(payload))
+        update_state(PR_NUMBER, state_step, "running")
+        # Re-run analysis for the final summary (already computed, re-run is cheap for small diffs)
+        summary  = summarizer.run(diff)
+        review   = reviewer.run(diff)
+        dp       = deep_policy.run(diff)
+        questions = ask_agent.run(diff)
+        run_final_approval(diff, summary, review, dp, questions)
+
+    elif qa_status == "question":
+        answer = ask_agent.answer(payload, diff)
+        post_new(coordinator.format_qa_answer(payload, answer))
+        # Stay in qa — label unchanged
+
+    # else: no new comment, nothing to do
+
+    exit(0)
+
 
 # ── STEP 1: Ingestion ─────────────────────────────────────────────────────────
 ingested = ingestion.run(pr)
 diff = ingested["diff"]
-
 post_box("ingestion", coordinator.format_ingestion(ingested))
 
 # ── STEP 2: Early Policy ──────────────────────────────────────────────────────
@@ -53,13 +102,11 @@ approved_3, msg_3 = approval_step_3.run(PR_NUMBER)
 
 if not approved_3:
     if "Rejected" in msg_3:
-        data = {"early_policy": early}
-        post_comment(pr, coordinator.build_rejection_summary("Step 3 (Early Policy)", data))
+        post_new(coordinator.build_rejection_summary("Step 3 (Early Policy)", {"early_policy": early}))
     else:
         post_box("approval_step_3", coordinator.format_waiting_approval(3))
     exit(0)
 
-# Extract approving user from msg e.g. "✅ Approved by alice"
 approver_3 = msg_3.split("by ")[-1] if "by " in msg_3 else "reviewer"
 post_box("approval_step_3", coordinator.format_approval_granted(3, approver_3))
 
@@ -73,20 +120,9 @@ post_box("review", coordinator.format_review(review))
 dp = deep_policy.run(diff)
 post_box("deep_policy", coordinator.format_deep_policy(dp))
 
-ask = ask_agent.run(diff)
-post_box("ask_agent", coordinator.format_ask_agent(ask))
+# ── ASK AGENT — post seed questions, enter Q&A mode ──────────────────────────
+questions = ask_agent.run(diff)
+post_box("ask_agent", coordinator.format_ask_agent(questions))
 
-# ── APPROVAL GATE 2 (Step 8) ──────────────────────────────────────────────────
-approved_8, msg_8 = approval_step_8.run(PR_NUMBER)
-
-if not approved_8:
-    if "Rejected" in msg_8:
-        data = {"summary": summary, "review": review, "deep_policy": dp}
-        post_comment(pr, coordinator.build_rejection_summary("Step 8 (Final Approval)", data))
-    else:
-        post_box("approval_step_8", coordinator.format_waiting_approval(8))
-    exit(0)
-
-# ── FINAL: Coordinator approval summary ───────────────────────────────────────
-data = {"summary": summary, "review": review, "deep_policy": dp, "ask_agent": ask}
-post_comment(pr, coordinator.build_approval_summary(data))
+update_state(PR_NUMBER, state_step, "qa")
+# Pipeline pauses here. Next run handles /done or user questions.

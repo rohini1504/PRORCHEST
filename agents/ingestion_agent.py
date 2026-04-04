@@ -1,7 +1,8 @@
-from github_client import get_pr_diff
-from db import save_output
+def run(pr):
+    files_data = []
 
-def run(pr_id, pr):
-    diff = get_pr_diff(pr)
-    save_output(pr_id, "ingestion", diff)
-    return diff
+    for f in pr.get_files():
+        if f.patch:
+            files_data.append(f"### {f.filename}\n{f.patch[:2000]}")
+
+    return "\n\n".join(files_data) if files_data else "No changes detected"

@@ -19,7 +19,7 @@ from agents import (
     approval_step_8
 )
 
-DELAY = 3  # seconds between bot posts
+DELAY = 3
 
 init_db()
 
@@ -36,28 +36,12 @@ def post_new(content):
     post_comment(pr, content)
     time.sleep(DELAY)
 
-def run_final_approval(diff, summary, review, dp, questions):
-    """Run approval gate 2 and post final summary if approved."""
-    approved_8, msg_8 = approval_step_8.run(PR_NUMBER)
-
-    if not approved_8:
-        if "Rejected" in msg_8:
-            data = {"summary": summary, "review": review, "deep_policy": dp}
-            post_new(coordinator.build_rejection_summary("Step 8 (Final Approval)", data))
-        else:
-            post_box("approval_step_8", coordinator.format_waiting_approval(8))
-        return
-
-    data = {"summary": summary, "review": review, "deep_policy": dp, "ask_agent": questions}
-    post_new(coordinator.build_approval_summary(data))
-
 
 # ── REJECTED ──────────────────────────────────────────────────────────────────
 if status == "rejected":
     ingested = ingestion.run(pr)
     stage = "Step 3 (Early Policy)" if state_step < 8 else "Step 8 (Final Approval)"
-    data = {"early_policy": early_policy.run(pr)}
-    post_new(coordinator.build_rejection_summary(stage, data))
+    post_new(coordinator.build_rejection_summary(stage, {"early_policy": early_policy.run(pr)}))
     exit(0)
 
 
@@ -68,23 +52,38 @@ if status == "qa":
 
     qa_status, payload = check_qa_comment(PR_NUMBER)
 
-    if qa_status == "done":
+    if qa_status == "approved":
+        # User approved directly from Q&A — skip /done, go straight to final
+        update_state(PR_NUMBER, 8, "running")
+        summary   = summarizer.run(diff)
+        review    = reviewer.run(diff)
+        dp        = deep_policy.run(diff)
+        questions = ask_agent.run(diff)
+        data = {"summary": summary, "review": review, "deep_policy": dp, "ask_agent": questions}
+        post_new(coordinator.build_approval_summary(data))
+
+    elif qa_status == "rejected":
+        update_state(PR_NUMBER, 8, "rejected")
+        summary = summarizer.run(diff)
+        review  = reviewer.run(diff)
+        dp      = deep_policy.run(diff)
+        post_new(coordinator.build_rejection_summary(
+            "Step 8 (Final Approval)",
+            {"summary": summary, "review": review, "deep_policy": dp}
+        ))
+
+    elif qa_status == "done":
+        # User done with questions — switch back to running and show approval gate
         post_new(coordinator.format_qa_done(payload))
         update_state(PR_NUMBER, state_step, "running")
-        # Re-run analysis for the final summary (already computed, re-run is cheap for small diffs)
-        summary  = summarizer.run(diff)
-        review   = reviewer.run(diff)
-        dp       = deep_policy.run(diff)
-        questions = ask_agent.run(diff)
-        run_final_approval(diff, summary, review, dp, questions)
+        post_box("approval_step_8", coordinator.format_waiting_approval(8))
 
     elif qa_status == "question":
         answer = ask_agent.answer(payload, diff)
         post_new(coordinator.format_qa_answer(payload, answer))
         # Stay in qa — label unchanged
 
-    # else: no new comment, nothing to do
-
+    # else: no new comment this run, nothing to do
     exit(0)
 
 
@@ -124,5 +123,5 @@ post_box("deep_policy", coordinator.format_deep_policy(dp))
 questions = ask_agent.run(diff)
 post_box("ask_agent", coordinator.format_ask_agent(questions))
 
+# Switch label to qa — next run routes to the Q&A branch above
 update_state(PR_NUMBER, state_step, "qa")
-# Pipeline pauses here. Next run handles /done or user questions.

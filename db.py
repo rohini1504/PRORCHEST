@@ -29,3 +29,10 @@ def get_outputs(pr_id):
         (pr_id,)
     )
     return cursor.fetchall()
+def get_last_step(pr_id):
+    cursor.execute(
+        "SELECT agent_name FROM agent_outputs WHERE pr_id=? ORDER BY rowid DESC LIMIT 1",
+        (pr_id,)
+    )
+    row = cursor.fetchone()
+    return row[0] if row else None

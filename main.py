@@ -87,9 +87,10 @@ if status == "qa":
 
     elif qa_status == "done":
         post_new(coordinator.format_qa_done(payload))
-        # FIX: hardcode step=3 — state_step read at startup is stale (was 0)
-        # because step=3 was written in a previous Actions run, not this one.
-        update_state(pr, 3, "running")
+        # Keep status="qa" so the NEXT comment (/approve-step 8) re-enters
+        # this same block. Previously set status="running" which caused the
+        # pipeline to fall through to the bottom and loop back to qa forever.
+        update_state(pr, 3, "qa")
         post_box("approval_step_8", coordinator.format_waiting_approval(8))
 
     elif qa_status == "question":
@@ -134,6 +135,5 @@ post_box("deep_policy", coordinator.format_deep_policy(dp), raw_data=dp)
 questions = ask_agent.run(diff)
 post_box("ask_agent", coordinator.format_ask_agent(questions), raw_data=questions)
 
-# ── Enter Q&A mode ─────────────────────────────────────────────────────────────
-# FIX: hardcode step=3 — state_step is stale (0) from startup read.
+# ── Enter Q&A mode ────────────────────────────────────────────────────────────
 update_state(pr, 3, "qa")

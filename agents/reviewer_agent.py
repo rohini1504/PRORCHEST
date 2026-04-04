@@ -1,25 +1,36 @@
-from db import save_output
 from llm_client import call_llm
+import json
 
-def run(pr_id, diff):
-    review = call_llm(f"""
-You are a senior code reviewer.
+def run(diff):
+    prompt = f"""
+Review the following code diff.
 
-Return STRICT format:
+Return STRICT JSON in this format:
 
-HIGH:
-- ...
+{{
+  "HIGH": ["..."],
+  "MEDIUM": ["..."],
+  "LOW": ["..."]
+}}
 
-MEDIUM:
-- ...
+Rules:
+- HIGH = bugs, security issues
+- MEDIUM = logic flaws, bad patterns
+- LOW = style, readability
 
-LOW:
-- ...
+DIFF:
+{diff[:4000]}
+"""
 
-No explanations.
+    response = call_llm(prompt, system_prompt="You are a strict senior code reviewer.")
 
-{diff}
-""")
+    try:
+        parsed = json.loads(response)
+    except:
+        parsed = {
+            "HIGH": [],
+            "MEDIUM": ["LLM output parsing failed"],
+            "LOW": []
+        }
 
-    save_output(pr_id, "review", review)
-    return review
+    return parsed

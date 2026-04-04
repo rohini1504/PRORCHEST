@@ -3,6 +3,9 @@ def run(pr):
 
     for f in pr.get_files():
         if f.patch:
-            files_data.append(f"### {f.filename}\n{f.patch[:2000]}")
+            files_data.append(f"### {f.filename}\n{f.patch[:1500]}")
 
-    return "\n\n".join(files_data) if files_data else "No changes detected"
+    if not files_data:
+        return "No meaningful code changes detected"
+
+    return "\n\n".join(files_data[:10])  # limit files

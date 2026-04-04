@@ -2,8 +2,6 @@ from llm_client import call_llm
 
 SYSTEM = "You are a senior engineering lead. Be concise and direct."
 
-# ── Box wrapper ────────────────────────────────────────────────────────────────
-
 def _box(emoji, title, body):
     return f"### {emoji} {title}\n---\n{body}\n"
 
@@ -14,67 +12,74 @@ def format_ingestion(result):
     return _box("📥", "Ingestion", result["metadata"])
 
 def format_early_policy(result):
-    return _box("📋", "Early Policy Check", result)
+    return _box("📋", "Early Policy", result)
 
 def format_waiting_approval(step):
     body = (
-        f"Automated checks complete. A human reviewer must approve before the pipeline continues.\n\n"
-        f"> `/approve-step {step}` — continue\n"
-        f"> `/reject-step {step}` — halt"
+        f"> `/approve-step {step}` — continue &nbsp;&nbsp; `/reject-step {step}` — halt"
     )
-    return _box("⏳", f"Awaiting Human Approval (Step {step})", body)
+    return _box("⏳", f"Awaiting Approval", body)
 
 def format_approval_granted(step, user):
-    return _box("✅", f"Step {step} Approved", f"Approved by **{user}**. Proceeding to next stage.")
+    return _box("✅", f"Step {step} Approved by {user}", "Pipeline continuing.")
 
 def format_summary(result):
-    return _box("📝", "PR Summary", result)
+    return _box("📝", "Summary", result)
 
 def format_review(result):
-    def items(lst):
-        return "\n".join(f"- {i}" for i in lst) if lst else "_None found_"
+    def render_items(lst, show_fix):
+        if not lst:
+            return "_None_"
+        lines = []
+        for item in lst:
+            if isinstance(item, dict):
+                issue = item.get("issue", "")
+                fname = item.get("file", "")
+                fix   = item.get("fix", "")
+                line  = f"- {issue}"
+                if fname:
+                    line += f" — `{fname}`"
+                lines.append(line)
+                if show_fix and fix:
+                    lines.append(f"  ```\n  {fix}\n  ```")
+            else:
+                lines.append(f"- {item}")
+        return "\n".join(lines)
 
     body = (
-        f"**🔴 High** (bugs / security)\n{items(result.get('HIGH', []))}\n\n"
-        f"**🟡 Medium** (logic / patterns)\n{items(result.get('MEDIUM', []))}\n\n"
-        f"**🟢 Low** (style / readability)\n{items(result.get('LOW', []))}"
+        f"**🔴 High**\n{render_items(result.get('HIGH', []), show_fix=True)}\n\n"
+        f"**🟡 Medium**\n{render_items(result.get('MEDIUM', []), show_fix=True)}\n\n"
+        f"**🟢 Low**\n{render_items(result.get('LOW', []), show_fix=False)}"
     )
     return _box("🔍", "Code Review", body)
 
 def format_deep_policy(result):
-    return _box("🛡️", "Policy & Standards Check", result)
+    return _box("🛡️", "Policy Check", result)
 
 def format_ask_agent(result):
-    return _box("💬", "Clarification Questions", result)
+    return _box("💬", "Questions for Author", result)
 
 
-# ── Coordinator summaries (terminal points only) ──────────────────────────────
+# ── Terminal summaries ─────────────────────────────────────────────────────────
 
 def build_rejection_summary(stage, data):
     context = ""
     if data.get("early_policy"):
-        context += f"Early Policy:\n{data['early_policy']}\n\n"
+        context += f"Policy: {data['early_policy']}\n"
     if data.get("summary"):
-        context += f"Summary:\n{data['summary']}\n\n"
+        context += f"Summary: {data['summary']}\n"
     if data.get("review") and isinstance(data["review"], dict):
-        high = data["review"].get("HIGH", [])
+        high = [i.get("issue","") if isinstance(i,dict) else i for i in data["review"].get("HIGH",[])]
         if high:
-            context += "Critical Issues:\n" + "\n".join(f"- {i}" for i in high) + "\n\n"
+            context += "High issues: " + ", ".join(high) + "\n"
 
-    prompt = f"""A PR review was rejected at: {stage}
-
-Available findings:
-{context[:2000]}
-
-Write 2-3 sentences: what was rejected, the main reason, and what the author must fix.
-No bullet points. Plain prose only."""
+    prompt = f"""PR rejected at: {stage}
+Findings: {context[:800]}
+Write ONE sentence: why it was rejected and what to fix. No fluff."""
 
     summary = call_llm(prompt, system_prompt=SYSTEM)
-    body = (
-        f"{summary}\n\n"
-        f"_Push a new commit or re-open the PR to restart the review._"
-    )
-    return _box("❌", f"Review Rejected — {stage}", body)
+    body = f"{summary}\n\n_Push a fix or re-open to restart._"
+    return _box("❌", f"Rejected — {stage}", body)
 
 
 def build_approval_summary(data):
@@ -83,25 +88,21 @@ def build_approval_summary(data):
     medium = review.get("MEDIUM", []) if isinstance(review, dict) else []
     low    = review.get("LOW",    []) if isinstance(review, dict) else []
 
-    prompt = f"""A PR passed all review stages and is approved to merge.
+    def issues_text(lst):
+        return ", ".join(
+            i.get("issue","") if isinstance(i,dict) else str(i) for i in lst
+        ) or "none"
 
-Summary: {data.get('summary', 'N/A')}
-High issues: {', '.join(high) or 'none'}
-Medium issues: {', '.join(medium) or 'none'}
-Policy notes: {data.get('deep_policy', 'N/A')}
-
-Write 3 sentences: what the PR does, any important caveats, and a clear merge sign-off.
-Plain prose only."""
+    prompt = f"""PR approved. Summary: {data.get('summary','N/A')}
+High: {issues_text(high)} | Medium: {issues_text(medium)}
+Write ONE sentence sign-off noting any caveats. Start with "Approved —"."""
 
     summary = call_llm(prompt, system_prompt=SYSTEM)
 
-    stats = (
-        f"| | Count |\n"
-        f"|---|---|\n"
-        f"| 🔴 High | {len(high)} |\n"
-        f"| 🟡 Medium | {len(medium)} |\n"
-        f"| 🟢 Low | {len(low)} |\n"
-    )
+    h = len(high); m = len(medium); l = len(low)
+    badge_h = f"🔴 {h}" if h else f"🔴 0"
+    badge_m = f"🟡 {m}" if m else f"🟡 0"
+    badge_l = f"🟢 {l}" if l else f"🟢 0"
 
-    body = f"{summary}\n\n{stats}"
+    body = f"{summary}\n\n{badge_h} &nbsp; {badge_m} &nbsp; {badge_l}"
     return _box("✅", "Approved — Ready to Merge", body)

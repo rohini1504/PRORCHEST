@@ -1,7 +1,7 @@
 import os
 from github import Github
 
-COMMENT_MARKER = "<!-- PR_REVIEW_BOT_COMMENT -->"
+MARKER = "<!-- PR_REVIEW_BOT -->"
 
 
 def get_repo():
@@ -26,15 +26,18 @@ def get_pr_diff(pr):
 
 def upsert_comment(pr, message):
     """
-    Update existing bot comment OR create new one
+    Always keep ONE bot comment.
+    Update if exists, else create.
     """
+    try:
+        comments = pr.get_issue_comments()
 
-    comments = pr.get_issue_comments()
+        for c in comments:
+            if MARKER in c.body:
+                c.edit(f"{MARKER}\n{message}")
+                return
 
-    for comment in comments:
-        if COMMENT_MARKER in comment.body:
-            comment.edit(COMMENT_MARKER + "\n" + message)
-            return
+        pr.create_issue_comment(f"{MARKER}\n{message}")
 
-    # if not found → create new
-    pr.create_issue_comment(COMMENT_MARKER + "\n" + message)
+    except Exception as e:
+        print("COMMENT ERROR:", str(e))

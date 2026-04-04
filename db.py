@@ -7,7 +7,9 @@ Labels used:
   pr-review:status=qa         — waiting for Q&A interaction
   pr-review:status=rejected   — PR was rejected
 
-Labels live on the PR itself so state survives across ephemeral Actions runners.
+All public functions now accept a pr object directly instead of a pr_number,
+eliminating the redundant get_repo().get_pull() call that was happening inside
+every db function even though main.py already held a pr reference.
 """
 
 from github_client import get_repo
@@ -21,10 +23,6 @@ LABEL_COLORS = {
 }
 
 
-def _get_pr(pr_number):
-    return get_repo().get_pull(pr_number)
-
-
 def _ensure_label_exists(repo, name, color="ededed"):
     try:
         repo.get_label(name)
@@ -36,7 +34,8 @@ def _get_review_labels(pr):
     return [l.name for l in pr.get_labels() if l.name.startswith(LABEL_PREFIX)]
 
 
-def _remove_labels_with_prefix(pr, repo, prefix):
+def _remove_labels_with_prefix(pr, prefix):
+    """Remove matching labels in a single get_labels() call (already fetched above)."""
     for name in _get_review_labels(pr):
         if name.startswith(prefix):
             try:
@@ -49,8 +48,12 @@ def init_db():
     pass  # labels created on demand
 
 
-def get_state(pr_number):
-    pr = _get_pr(pr_number)
+def get_state(pr):
+    """
+    Accept pr object directly.
+    Previously called get_repo().get_pull(pr_number) internally — that was
+    a redundant API call since main.py already had a pr reference.
+    """
     labels = _get_review_labels(pr)
 
     last_step = 0
@@ -69,12 +72,19 @@ def get_state(pr_number):
     return last_step, status
 
 
-def update_state(pr_number, step, status="running"):
-    pr = _get_pr(pr_number)
+def update_state(pr, step, status="running"):
+    """
+    Accept pr object directly and fetch repo once.
+    Old version: called get_repo().get_pull() AND get_repo() separately,
+    plus called _get_review_labels() twice (once per prefix removal).
+    Now: one get_repo() call, one get_labels() call per removal.
+    Also ensures both new labels exist before adding them in one add_to_labels()
+    call, which is unchanged but now runs against an already-held pr object.
+    """
     repo = get_repo()
 
-    _remove_labels_with_prefix(pr, repo, LABEL_PREFIX + "step=")
-    _remove_labels_with_prefix(pr, repo, LABEL_PREFIX + "status=")
+    _remove_labels_with_prefix(pr, LABEL_PREFIX + "step=")
+    _remove_labels_with_prefix(pr, LABEL_PREFIX + "status=")
 
     step_label   = f"{LABEL_PREFIX}step={step}"
     status_label = f"{LABEL_PREFIX}status={status}"

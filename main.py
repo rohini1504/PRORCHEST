@@ -1,7 +1,8 @@
+import sys
 import os
 from github_client import get_pr, upsert_comment
 from db import init_db, get_state
-
+sys.path.append(os.getcwd())
 from agents import (
     ingestion,
     early_policy,

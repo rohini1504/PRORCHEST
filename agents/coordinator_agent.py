@@ -2,57 +2,75 @@ from llm_client import call_llm
 
 SYSTEM = "You are a senior engineering lead. Be concise and direct."
 
-def _box(emoji, title, body):
-    return f"### {emoji} {title}\n---\n{body}\n"
+def _box(label, title, body):
+    return f"### [{label}] {title}\n---\n{body}\n"
 
 
 # ── Per-agent formatters ───────────────────────────────────────────────────────
 
 def format_ingestion(result):
-    return _box("📥", "Ingestion", result["metadata"])
+    return _box("INGESTION", "Pull Request Overview", result["metadata"])
 
 def format_early_policy(result):
-    return _box("📋", "Early Policy", result)
+    return _box("POLICY", "Early Policy Check", result)
 
 def format_waiting_approval(step):
-    body = f"> `/approve-step {step}` — continue &nbsp;&nbsp; `/reject-step {step}` — halt"
-    return _box("⏳", "Awaiting Approval", body)
+    body = (
+        f"**STATUS:** Awaiting reviewer sign-off on Step {step}\n\n"
+        f"| Action     | Command               |\n"
+        f"|------------|-----------------------|\n"
+        f"| To Continue | `/approve-step {step}` |\n"
+        f"| To Halt     | `/reject-step {step}`  |"
+    )
+    return _box("PENDING", f"Awaiting Approval — Step {step}", body)
 
 def format_approval_granted(step, user):
-    return _box("✅", f"Step {step} Approved by {user}", "Pipeline continuing.")
+    return _box("APPROVED", f"Step {step} Approved by {user}", "Pipeline continuing.")
 
 def format_summary(result):
-    return _box("📝", "Summary", result)
+    return _box("SUMMARY", "Change Summary", result)
 
 def format_review(result):
     def render_items(lst, show_fix):
         if not lst:
             return "_None_"
         lines = []
-        for item in lst:
+        for idx, item in enumerate(lst, 1):
             if isinstance(item, dict):
                 issue = item.get("issue", "")
                 fname = item.get("file", "")
                 fix   = item.get("fix", "")
-                line  = f"- {issue}"
+                lines.append(f"**{idx}.** {issue}")
                 if fname:
-                    line += f" — `{fname}`"
-                lines.append(line)
+                    lines.append(f"   File: `{fname}`")
                 if show_fix and fix:
-                    lines.append(f"  ```\n  {fix}\n  ```")
+                    lines.append(f"   Fix:\n   ```\n   {fix}\n   ```")
             else:
-                lines.append(f"- {item}")
+                lines.append(f"**{idx}.** {item}")
         return "\n".join(lines)
 
-    body = (
-        f"**🔴 High**\n{render_items(result.get('HIGH', []), show_fix=True)}\n\n"
-        f"**🟡 Medium**\n{render_items(result.get('MEDIUM', []), show_fix=True)}\n\n"
-        f"**🟢 Low**\n{render_items(result.get('LOW', []), show_fix=False)}"
+    high   = result.get("HIGH",   [])
+    medium = result.get("MEDIUM", [])
+    low    = result.get("LOW",    [])
+    h, m, l = len(high), len(medium), len(low)
+
+    scorecard = (
+        f"| High | Medium | Low |\n"
+        f"|------|--------|-----|\n"
+        f"| {h}    | {m}      | {l}   |\n"
     )
-    return _box("🔍", "Code Review", body)
+
+    body = (
+        f"**Severity Summary**\n\n{scorecard}\n"
+        f"---\n\n"
+        f"**HIGH SEVERITY**\n{render_items(high, show_fix=True)}\n\n"
+        f"**MEDIUM SEVERITY**\n{render_items(medium, show_fix=True)}\n\n"
+        f"**LOW SEVERITY**\n{render_items(low, show_fix=False)}"
+    )
+    return _box("REVIEW", "Code Review", body)
 
 def format_deep_policy(result):
-    return _box("🛡️", "Policy Check", result)
+    return _box("POLICY", "Deep Policy Check", result)
 
 
 # ── internal helpers ───────────────────────────────────────────────────────────
@@ -69,7 +87,7 @@ def _policy_prose(raw):
     """Turn raw policy output into a readable sentence."""
     if not raw or not raw.strip():
         return "No policy issues were detected."
-    lines = [ln.strip().lstrip("⚠️🔴-•").strip() for ln in raw.splitlines() if ln.strip()]
+    lines = [ln.strip().lstrip("[CRITICALWARN]-•").strip() for ln in raw.splitlines() if ln.strip()]
     lines = [l for l in lines if l and l.lower() != "no issues found."]
     if not lines:
         return "No policy issues were detected."
@@ -92,13 +110,21 @@ def build_approval_summary(data):
     low    = review.get("LOW",    []) if isinstance(review, dict) else []
     h, m, l = len(high), len(medium), len(low)
 
-    # Verdict
+    # Verdict block
     if h > 0:
-        verdict = "This PR has been **approved**, though it carries high-severity findings that should be resolved before the next production deployment."
+        verdict_line = "APPROVED — carries high-severity findings that should be resolved before the next production deployment."
     elif m > 0:
-        verdict = "This PR has been **approved**. There are no blocking issues, though a few medium-severity observations are worth addressing in a follow-up."
+        verdict_line = "APPROVED — no blocking issues, though medium-severity observations are worth addressing in a follow-up."
     else:
-        verdict = "This PR has been **approved**. The automated review found no critical or blocking issues and the code is considered safe to merge."
+        verdict_line = "APPROVED — no critical or blocking issues found. Safe to merge."
+
+    verdict = (
+        f"| Field   | Value                     |\n"
+        f"|---------|---------------------------|\n"
+        f"| Verdict | {verdict_line} |\n"
+        f"| Stage   | Step 8 — Final Review     |\n"
+        f"| Issues  | {h} High · {m} Medium · {l} Low |"
+    )
 
     # What changed
     change_para = f"**Changes:** {summary}" if summary else ""
@@ -128,7 +154,7 @@ def build_approval_summary(data):
     paragraphs = [p for p in [verdict, change_para, review_para, policy_para] if p]
     body = "\n\n".join(paragraphs) + "\n\n---\n_Reviewed by PR Review Bot. Merge at your discretion._"
 
-    return _box("✅", "PR Review Complete — Approved", body)
+    return _box("APPROVED", "PR Review Complete — Approved", body)
 
 
 # ── REJECTED — clear narrative explaining exactly why ─────────────────────────
@@ -155,7 +181,7 @@ def build_rejection_summary(stage, data):
     # Early policy failures (missing title, description, oversized PR etc.)
     if early_policy:
         for line in early_policy.splitlines():
-            line = line.strip().lstrip("❌⚠️").strip()
+            line = line.strip().lstrip("[FAILWARN]").strip()
             if line:
                 reasons.append(line)
 
@@ -176,7 +202,7 @@ def build_rejection_summary(stage, data):
 
     # Policy flags
     for ln in deep_policy.splitlines():
-        ln = ln.strip().lstrip("⚠️🔴-•").strip()
+        ln = ln.strip().lstrip("[CRITICALWARN]-•").strip()
         if ln and ln.lower() != "no issues found.":
             reasons.append(ln)
 
@@ -199,23 +225,32 @@ def build_rejection_summary(stage, data):
         f"Please address the issues above, push a new commit, or re-open this PR to restart the review pipeline."
     )
 
-    return _box("❌", "PR Review Complete — Rejected", body)
+    return _box("REJECTED", "PR Review Complete — Rejected", body)
 
 
 # ── Q&A formatters ────────────────────────────────────────────────────────────
 
 def format_ask_agent(questions):
+    lines = [l.strip() for l in questions.strip().splitlines() if l.strip()]
+    formatted_questions = []
+    for i, line in enumerate(lines, 1):
+        # Strip leading number if already present
+        clean = line.lstrip("0123456789.-) ").strip()
+        formatted_questions.append(f"**QUESTION {i}**\n{clean}")
+
+    questions_block = "\n\n---\n\n".join(formatted_questions)
+
     body = (
-        f"{questions}\n\n"
-        f"---\n"
-        f"💬 **Ask me anything about this PR** — reply with your question.\n"
+        f"{questions_block}\n\n"
+        f"---\n\n"
+        f"**Ask me anything about this PR** — reply with your question.\n"
         f"Type `/done` when you're ready to proceed to final approval."
     )
-    return _box("💬", "Questions for Author", body)
+    return _box("QA", "Questions for Author", body)
 
 def format_qa_answer(question, answer):
     body = f"**Q:** {question}\n\n**A:** {answer}"
-    return _box("🤖", "Answer", body)
+    return _box("ANSWER", "Response", body)
 
 def format_qa_done(user):
-    return _box("✅", "Q&A Complete", f"Proceeding to final approval. Thanks {user}.")
+    return _box("DONE", "Q&A Complete", f"Proceeding to final approval. Thanks {user}.")

@@ -1,38 +1,35 @@
 import sqlite3
 
-conn = sqlite3.connect("review.db", check_same_thread=False)
-cursor = conn.cursor()
+DB_FILE = "pr_review.db"
 
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS agent_outputs (
-    pr_id TEXT,
-    agent_name TEXT,
-    output TEXT
-)
-""")
-conn.commit()
-
-def clear_outputs(pr_id):
-    cursor.execute("DELETE FROM agent_outputs WHERE pr_id=?", (pr_id,))
+def init_db():
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS pr_state (
+            pr_number INTEGER PRIMARY KEY,
+            last_step INTEGER,
+            status TEXT
+        )
+    """)
     conn.commit()
+    conn.close()
 
-def save_output(pr_id, agent, output):
-    cursor.execute(
-        "INSERT INTO agent_outputs VALUES (?, ?, ?)",
-        (pr_id, agent, output)
-    )
+def get_state(pr_number):
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("SELECT last_step, status FROM pr_state WHERE pr_number=?", (pr_number,))
+    row = c.fetchone()
+    conn.close()
+    return row if row else (0, "running")
+
+def update_state(pr_number, step, status="running"):
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("""
+        INSERT INTO pr_state (pr_number, last_step, status)
+        VALUES (?, ?, ?)
+        ON CONFLICT(pr_number) DO UPDATE SET last_step=?, status=?
+    """, (pr_number, step, status, step, status))
     conn.commit()
-
-def get_outputs(pr_id):
-    cursor.execute(
-        "SELECT agent_name, output FROM agent_outputs WHERE pr_id=?",
-        (pr_id,)
-    )
-    return cursor.fetchall()
-def get_last_step(pr_id):
-    cursor.execute(
-        "SELECT agent_name FROM agent_outputs WHERE pr_id=? ORDER BY rowid DESC LIMIT 1",
-        (pr_id,)
-    )
-    row = cursor.fetchone()
-    return row[0] if row else None
+    conn.close()

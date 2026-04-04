@@ -1,5 +1,6 @@
 from db import get_outputs
-from github_client import post_comment
+from github_client import upsert_comment
+
 
 def run(pr_id, pr):
     outputs = dict(get_outputs(pr_id))
@@ -30,4 +31,5 @@ def run(pr_id, pr):
     if "approval_step_8" in outputs:
         comment += f"### approval_step_8\n{outputs['approval_step_8']}\n\n"
 
-    post_comment(pr, comment)
+    # 🔥 THIS IS THE FIX
+    upsert_comment(pr, comment)

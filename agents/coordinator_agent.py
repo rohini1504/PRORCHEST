@@ -1,145 +1,107 @@
 from llm_client import call_llm
 
-SYSTEM = "You are a senior engineering lead summarizing a multi-agent PR review pipeline."
+SYSTEM = "You are a senior engineering lead. Be concise and direct."
 
-# ─────────────────────────────────────────────
-#  Box formatting helpers
-# ─────────────────────────────────────────────
+# ── Box wrapper ────────────────────────────────────────────────────────────────
 
-def _box(title, emoji, content):
-    return (
-        f"## {emoji} {title}\n\n"
-        f"{content}\n"
-    )
+def _box(emoji, title, body):
+    return f"### {emoji} {title}\n---\n{body}\n"
 
 
-# ─────────────────────────────────────────────
-#  Individual agent boxes (called from main.py)
-# ─────────────────────────────────────────────
+# ── Per-agent formatters ───────────────────────────────────────────────────────
 
-def format_ingestion(diff):
-    return _box("Ingestion", "📥", f"```diff\n{diff[:2000]}\n```")
+def format_ingestion(result):
+    return _box("📥", "Ingestion", result["metadata"])
 
 def format_early_policy(result):
-    return _box("Early Policy Check", "📋", result)
+    return _box("📋", "Early Policy Check", result)
 
 def format_waiting_approval(step):
-    return _box(
-        f"Awaiting Approval — Step {step}", "⏳",
-        f"👉 Comment `/approve-step {step}` to continue\n"
-        f"👉 Comment `/reject-step {step}` to halt"
+    body = (
+        f"Automated checks complete. A human reviewer must approve before the pipeline continues.\n\n"
+        f"> `/approve-step {step}` — continue\n"
+        f"> `/reject-step {step}` — halt"
     )
+    return _box("⏳", f"Awaiting Human Approval (Step {step})", body)
+
+def format_approval_granted(step, user):
+    return _box("✅", f"Step {step} Approved", f"Approved by **{user}**. Proceeding to next stage.")
 
 def format_summary(result):
-    return _box("PR Summary", "📝", result)
+    return _box("📝", "PR Summary", result)
 
 def format_review(result):
-    if isinstance(result, dict):
-        high   = "\n".join(f"- {i}" for i in result.get("HIGH",   [])) or "_None_"
-        medium = "\n".join(f"- {i}" for i in result.get("MEDIUM", [])) or "_None_"
-        low    = "\n".join(f"- {i}" for i in result.get("LOW",    [])) or "_None_"
-        body = (
-            f"**🔴 HIGH**\n{high}\n\n"
-            f"**🟡 MEDIUM**\n{medium}\n\n"
-            f"**🟢 LOW**\n{low}"
-        )
-    else:
-        body = str(result)
-    return _box("Code Review", "🔍", body)
+    def items(lst):
+        return "\n".join(f"- {i}" for i in lst) if lst else "_None found_"
+
+    body = (
+        f"**🔴 High** (bugs / security)\n{items(result.get('HIGH', []))}\n\n"
+        f"**🟡 Medium** (logic / patterns)\n{items(result.get('MEDIUM', []))}\n\n"
+        f"**🟢 Low** (style / readability)\n{items(result.get('LOW', []))}"
+    )
+    return _box("🔍", "Code Review", body)
 
 def format_deep_policy(result):
-    return _box("Deep Policy Analysis", "🛡️", result)
+    return _box("🛡️", "Policy & Standards Check", result)
 
 def format_ask_agent(result):
-    return _box("Discussion Questions", "💬", result)
+    return _box("💬", "Clarification Questions", result)
 
 
-# ─────────────────────────────────────────────
-#  Coordinator summaries (posted as final boxes)
-# ─────────────────────────────────────────────
+# ── Coordinator summaries (terminal points only) ──────────────────────────────
 
 def build_rejection_summary(stage, data):
-    """
-    Called when a step is rejected.
-    stage: human-readable name of where rejection happened e.g. "Step 3 (Early Policy)"
-    data: dict of whatever outputs exist so far
-    """
-    context_parts = []
-    for key, val in data.items():
-        if val:
-            context_parts.append(f"[{key}]\n{val}")
-    context = "\n\n".join(context_parts)[:3000]
+    context = ""
+    if data.get("early_policy"):
+        context += f"Early Policy:\n{data['early_policy']}\n\n"
+    if data.get("summary"):
+        context += f"Summary:\n{data['summary']}\n\n"
+    if data.get("review") and isinstance(data["review"], dict):
+        high = data["review"].get("HIGH", [])
+        if high:
+            context += "Critical Issues:\n" + "\n".join(f"- {i}" for i in high) + "\n\n"
 
-    prompt = f"""
-A PR review pipeline was REJECTED at: {stage}
+    prompt = f"""A PR review was rejected at: {stage}
 
-Here is everything that was collected before rejection:
-{context}
+Available findings:
+{context[:2000]}
 
-Write a concise rejection summary (3-5 sentences) covering:
-- What stage it was rejected at and why (based on available data)
-- The most critical issues found
-- What the author should fix before re-submitting
-"""
-    llm_summary = call_llm(prompt, system_prompt=SYSTEM)
+Write 2-3 sentences: what was rejected, the main reason, and what the author must fix.
+No bullet points. Plain prose only."""
 
-    return _box(
-        f"Review Rejected at {stage}", "❌",
-        f"{llm_summary}\n\n"
-        f"---\n_Re-open or push a new commit to restart the review pipeline._"
+    summary = call_llm(prompt, system_prompt=SYSTEM)
+    body = (
+        f"{summary}\n\n"
+        f"_Push a new commit or re-open the PR to restart the review._"
     )
+    return _box("❌", f"Review Rejected — {stage}", body)
 
 
 def build_approval_summary(data):
-    """
-    Called on final approval. Synthesizes all agent outputs into a gist.
-    data: dict of all agent outputs
-    """
     review = data.get("review", {})
-    if isinstance(review, dict):
-        high   = review.get("HIGH",   [])
-        medium = review.get("MEDIUM", [])
-        low    = review.get("LOW",    [])
-        review_text = (
-            f"HIGH: {', '.join(high) or 'none'}\n"
-            f"MEDIUM: {', '.join(medium) or 'none'}\n"
-            f"LOW: {', '.join(low) or 'none'}"
-        )
-    else:
-        review_text = str(review)
+    high   = review.get("HIGH",   []) if isinstance(review, dict) else []
+    medium = review.get("MEDIUM", []) if isinstance(review, dict) else []
+    low    = review.get("LOW",    []) if isinstance(review, dict) else []
 
-    prompt = f"""
-A PR has passed all review stages and is approved for merge.
+    prompt = f"""A PR passed all review stages and is approved to merge.
 
 Summary: {data.get('summary', 'N/A')}
+High issues: {', '.join(high) or 'none'}
+Medium issues: {', '.join(medium) or 'none'}
+Policy notes: {data.get('deep_policy', 'N/A')}
 
-Code Review findings:
-{review_text}
+Write 3 sentences: what the PR does, any important caveats, and a clear merge sign-off.
+Plain prose only."""
 
-Deep Policy: {data.get('deep_policy', 'N/A')}
-
-Write a final approval gist (4-6 sentences) covering:
-- What this PR does (from the summary)
-- Key findings across all review types (consolidate HIGH/MEDIUM/LOW)
-- Any remaining notes or caveats the merger should know
-- A clear "approved to merge" sign-off
-"""
-    llm_summary = call_llm(prompt, system_prompt=SYSTEM)
-
-    high_count   = len(review.get("HIGH",   [])) if isinstance(review, dict) else "?"
-    medium_count = len(review.get("MEDIUM", [])) if isinstance(review, dict) else "?"
-    low_count    = len(review.get("LOW",    [])) if isinstance(review, dict) else "?"
+    summary = call_llm(prompt, system_prompt=SYSTEM)
 
     stats = (
-        f"| Severity | Count |\n"
-        f"|----------|-------|\n"
-        f"| 🔴 HIGH   | {high_count} |\n"
-        f"| 🟡 MEDIUM | {medium_count} |\n"
-        f"| 🟢 LOW    | {low_count} |\n"
+        f"| | Count |\n"
+        f"|---|---|\n"
+        f"| 🔴 High | {len(high)} |\n"
+        f"| 🟡 Medium | {len(medium)} |\n"
+        f"| 🟢 Low | {len(low)} |\n"
     )
 
-    return _box(
-        "Final Review — Approved to Merge", "✅",
-        f"{llm_summary}\n\n"
-        f"### Review Stats\n{stats}"
-    )
+    body = f"{summary}\n\n{stats}"
+    return _box("✅", "Approved — Ready to Merge", body)

@@ -3,21 +3,22 @@ from approval import check_approval
 
 STEP = 8
 
-def run(pr_number):
-    last_step, status = get_state(pr_number)
+def run(pr):
+    """
+    Accepts pr object directly — no pr_number needed.
+    """
+    last_step, status = get_state(pr)
 
-    # Always check the latest comment first — it may override DB state
-    decision, user = check_approval(pr_number, STEP)
+    decision, user = check_approval(pr.number, STEP)
 
     if decision == "approved":
-        update_state(pr_number, STEP, "running")
+        update_state(pr, STEP, "running")
         return True, f"✅ Approved by {user}"
 
     if decision == "rejected":
-        update_state(pr_number, STEP, "rejected")
+        update_state(pr, STEP, "rejected")
         return False, f"❌ Rejected by {user}"
 
-    # No new comment — fall back to DB state
     if status == "rejected":
         return False, "❌ PR already rejected"
 

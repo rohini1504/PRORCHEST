@@ -1,36 +1,39 @@
 from llm_client import call_llm
 import json
+import re
 
 def run(diff):
-    prompt = f"""
-Review the following code diff.
+    prompt = f"""Review this code diff. Reply ONLY with a JSON object, no other text.
 
-Return STRICT JSON in this format:
-
-{{
-  "HIGH": ["..."],
-  "MEDIUM": ["..."],
-  "LOW": ["..."]
-}}
+Format:
+{{"HIGH": ["..."], "MEDIUM": ["..."], "LOW": ["..."]}}
 
 Rules:
-- HIGH = bugs, security issues
-- MEDIUM = logic flaws, bad patterns
-- LOW = style, readability
+- HIGH: bugs, crashes, security vulnerabilities
+- MEDIUM: logic flaws, missing error handling, bad patterns
+- LOW: style, naming, readability
+- Each item must be one sentence under 15 words
+- Empty list [] if nothing found at that level
+- Maximum 3 items per level
 
 DIFF:
-{diff[:4000]}
-"""
+{diff[:4000]}"""
 
-    response = call_llm(prompt, system_prompt="You are a strict senior code reviewer.")
+    response = call_llm(
+        prompt,
+        system_prompt="You are a strict code reviewer. Reply only with the JSON object, nothing else."
+    )
+
+    # Strip markdown code fences if model wraps in ```json ... ```
+    clean = re.sub(r"```(?:json)?|```", "", response).strip()
 
     try:
-        parsed = json.loads(response)
-    except:
-        parsed = {
-            "HIGH": [],
-            "MEDIUM": ["LLM output parsing failed"],
-            "LOW": []
+        parsed = json.loads(clean)
+        # Ensure all keys exist and are lists
+        return {
+            "HIGH":   [str(i) for i in parsed.get("HIGH",   [])[:3]],
+            "MEDIUM": [str(i) for i in parsed.get("MEDIUM", [])[:3]],
+            "LOW":    [str(i) for i in parsed.get("LOW",    [])[:3]],
         }
-
-    return parsed
+    except Exception:
+        return {"HIGH": [], "MEDIUM": ["Could not parse review output"], "LOW": []}

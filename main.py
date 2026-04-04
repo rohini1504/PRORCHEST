@@ -14,36 +14,42 @@ from agents import (
     coordinator_agent
 )
 
+
 def main(pr_number):
     pr = get_pr(pr_number)
     pr_id = str(pr_number)
 
-    last_step = get_last_step(pr_id)
+    clear_outputs(pr_id)
 
-    # 🔹 FIRST RUN
-    if last_step is None:
-        diff = ingestion_agent.run(pr_id, pr)
-        early_policy_agent.run(pr_id, pr)
+    # STEP 1
+    diff = ingestion_agent.run(pr_id, pr)
+    early_policy_agent.run(pr_id, pr)
 
-        approved = approval_agent_1.run(pr_id, pr_number)
-        coordinator_agent.run(pr_id, pr)
+    approved = approval_agent_1.run(pr_id, pr_number)
 
+    # 🔥 ALWAYS SHOW REPORT
+    coordinator_agent.run(pr_id, pr)
+
+    if not approved:
         return
 
-    # 🔹 AFTER APPROVAL 3
-    if last_step == "approval_step_3":
-        diff = ingestion_agent.run(pr_id, pr)
+    # STEP 2
+    summarizer_agent.run(pr_id, diff)
+    reviewer_agent.run(pr_id, diff)
+    deep_policy_agent.run(pr_id, diff)
+    ask_agent.run(pr_id)
 
-        summarizer_agent.run(pr_id, diff)
-        reviewer_agent.run(pr_id, diff)
-        deep_policy_agent.run(pr_id, diff)
-        ask_agent.run(pr_id)
+    approved = approval_agent_2.run(pr_id, pr_number)
 
-        approved = approval_agent_2.run(pr_id, pr_number)
-        coordinator_agent.run(pr_id, pr)
+    # 🔥 UPDATE REPORT AGAIN
+    coordinator_agent.run(pr_id, pr)
 
+    if not approved:
         return
 
-    # 🔹 FINAL
-    if last_step == "approval_step_8":
-        coordinator_agent.run(pr_id, pr)
+    # FINAL
+    coordinator_agent.run(pr_id, pr)
+
+
+if __name__ == "__main__":
+    main(int(sys.argv[1]))

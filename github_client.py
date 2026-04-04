@@ -27,14 +27,11 @@ def post_agent_box(pr, agent_name, content, raw_data=None):
     """
     Post a comment box for this agent. Skip if already posted.
     Returns True if a new comment was created, False if skipped.
-    raw_data: optional string to store invisibly for later retrieval.
-              Stored as base64 inside an HTML comment so it survives
-              across runs without any DB.
     """
     marker = _agent_marker(agent_name)
     for c in pr.get_issue_comments():
         if marker in c.body:
-            return False  # already posted, never replace
+            return False
 
     hidden = ""
     if raw_data is not None:
@@ -46,8 +43,9 @@ def post_agent_box(pr, agent_name, content, raw_data=None):
 
 def read_output(pr, agent_name):
     """
-    Retrieve the raw_data stored by post_agent_box for a given agent.
-    Returns None if not found.
+    Retrieve raw_data for a single agent.
+    Prefer read_all_outputs() when you need multiple agents — it only
+    calls get_issue_comments() once instead of once per agent.
     """
     marker = _agent_marker(agent_name)
     data_prefix = _data_marker(agent_name)
@@ -63,6 +61,35 @@ def read_output(pr, agent_name):
                 except Exception:
                     return None
     return None
+
+def read_all_outputs(pr, agent_names):
+    """
+    Retrieve raw_data for multiple agents in a SINGLE get_issue_comments() call.
+    Returns a dict {agent_name: decoded_string_or_None}.
+    Previously load_cached_outputs() called get_issue_comments() 4 separate
+    times (once per agent), adding ~12-40s of API latency on Actions.
+    """
+    results = {name: None for name in agent_names}
+    remaining = set(agent_names)
+
+    for c in pr.get_issue_comments():
+        if not remaining:
+            break
+        for name in list(remaining):
+            marker = _agent_marker(name)
+            if marker not in c.body:
+                continue
+            data_prefix = _data_marker(name)
+            for line in c.body.splitlines():
+                if line.startswith(data_prefix):
+                    encoded = line[len(data_prefix):].rstrip("-->").strip()
+                    try:
+                        results[name] = base64.b64decode(encoded.encode()).decode()
+                    except Exception:
+                        results[name] = None
+            remaining.discard(name)
+
+    return results
 
 def post_comment(pr, content):
     """Always post a new comment (used for coordinator summaries)."""

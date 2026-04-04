@@ -18,7 +18,7 @@ def format_waiting_approval(step):
     body = (
         f"> `/approve-step {step}` — continue &nbsp;&nbsp; `/reject-step {step}` — halt"
     )
-    return _box("⏳", f"Awaiting Approval", body)
+    return _box("⏳", "Awaiting Approval", body)
 
 def format_approval_granted(step, user):
     return _box("✅", f"Step {step} Approved by {user}", "Pipeline continuing.")
@@ -56,9 +56,6 @@ def format_review(result):
 def format_deep_policy(result):
     return _box("🛡️", "Policy Check", result)
 
-def format_ask_agent(result):
-    return _box("💬", "Questions for Author", result)
-
 
 # ── Terminal summaries ─────────────────────────────────────────────────────────
 
@@ -69,7 +66,7 @@ def build_rejection_summary(stage, data):
     if data.get("summary"):
         context += f"Summary: {data['summary']}\n"
     if data.get("review") and isinstance(data["review"], dict):
-        high = [i.get("issue","") if isinstance(i,dict) else i for i in data["review"].get("HIGH",[])]
+        high = [i.get("issue", "") if isinstance(i, dict) else i for i in data["review"].get("HIGH", [])]
         if high:
             context += "High issues: " + ", ".join(high) + "\n"
 
@@ -83,32 +80,38 @@ Write ONE sentence: why it was rejected and what to fix. No fluff."""
 
 
 def build_approval_summary(data):
+    """
+    Build the final approval comment without any LLM call.
+    Previously called call_llm() here, which added up to 21 s of
+    latency (15 s timeout × up to 3 retries) on every approval.
+    The sign-off is now generated deterministically from the cached
+    review data that is already stored in PR comments.
+    """
     review = data.get("review", {})
     high   = review.get("HIGH",   []) if isinstance(review, dict) else []
     medium = review.get("MEDIUM", []) if isinstance(review, dict) else []
     low    = review.get("LOW",    []) if isinstance(review, dict) else []
 
-    def issues_text(lst):
-        return ", ".join(
-            i.get("issue","") if isinstance(i,dict) else str(i) for i in lst
-        ) or "none"
-
-    prompt = f"""PR approved. Summary: {data.get('summary','N/A')}
-High: {issues_text(high)} | Medium: {issues_text(medium)}
-Write ONE sentence sign-off noting any caveats. Start with "Approved —"."""
-
-    summary = call_llm(prompt, system_prompt=SYSTEM)
-
     h = len(high); m = len(medium); l = len(low)
-    badge_h = f"🔴 {h}" if h else f"🔴 0"
-    badge_m = f"🟡 {m}" if m else f"🟡 0"
-    badge_l = f"🟢 {l}" if l else f"🟢 0"
 
-    body = f"{summary}\n\n{badge_h} &nbsp; {badge_m} &nbsp; {badge_l}"
+    # Deterministic sign-off — no LLM required
+    if h > 0:
+        issues = ", ".join(i.get("issue", "") if isinstance(i, dict) else str(i) for i in high)
+        sign_off = f"Approved — address {h} high-severity issue(s) before shipping: {issues}."
+    elif m > 0:
+        sign_off = f"Approved — {m} medium issue(s) noted; review before next release."
+    else:
+        sign_off = "Approved — no critical issues found. Safe to merge."
+
+    badge_h = f"🔴 {h}"
+    badge_m = f"🟡 {m}"
+    badge_l = f"🟢 {l}"
+
+    body = f"{sign_off}\n\n{badge_h} &nbsp; {badge_m} &nbsp; {badge_l}"
     return _box("✅", "Approved — Ready to Merge", body)
 
 
-# ── Q&A formatters (appended) ─────────────────────────────────────────────────
+# ── Q&A formatters ────────────────────────────────────────────────────────────
 
 def format_ask_agent(questions):
     body = (

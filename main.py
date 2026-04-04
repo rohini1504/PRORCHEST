@@ -4,9 +4,11 @@ import time
 import json
 sys.path.append(os.getcwd())
 
-from github_client import get_pr, post_agent_box, post_comment, read_output, _agent_marker
+from github_client import (
+    get_pr, post_agent_box, post_comment, read_all_outputs, _agent_marker
+)
 from db import init_db, get_state, update_state
-from approval import check_approval, check_qa_comment
+from approval import check_qa_comment
 
 from agents import (
     ingestion,
@@ -25,12 +27,14 @@ DELAY = 2
 init_db()
 
 PR_NUMBER = int(os.getenv("PR_NUMBER"))
+
+# Single get_pr() call — reused everywhere; never call get_pr() again.
 pr = get_pr(PR_NUMBER)
 
-state_step, status = get_state(PR_NUMBER)
+# get_state now accepts the pr object directly — no second get_pull() inside db.py
+state_step, status = get_state(pr)
 
 def _already_posted(agent_name):
-    """Return True if this agent's comment already exists on the PR."""
     marker = _agent_marker(agent_name)
     return any(marker in c.body for c in pr.get_issue_comments())
 
@@ -45,26 +49,22 @@ def post_new(content):
     time.sleep(DELAY)
 
 def load_cached_outputs():
-    """Read all agent outputs stored in PR comments — no LLM calls needed."""
-    summary_raw   = read_output(pr, "summary")
-    review_raw    = read_output(pr, "review")
-    dp_raw        = read_output(pr, "deep_policy")
-    questions_raw = read_output(pr, "ask_agent")
-
+    """
+    Read all agent outputs in ONE get_issue_comments() call.
+    Previously called read_output() 4 times = 4 separate API round-trips.
+    """
+    outputs = read_all_outputs(pr, ["summary", "review", "deep_policy", "ask_agent"])
+    review_raw = outputs.get("review")
     review = json.loads(review_raw) if review_raw else {"HIGH": [], "MEDIUM": [], "LOW": []}
-
     return {
-        "summary":     summary_raw or "",
+        "summary":     outputs.get("summary") or "",
         "review":      review,
-        "deep_policy": dp_raw or "",
-        "ask_agent":   questions_raw or "",
+        "deep_policy": outputs.get("deep_policy") or "",
+        "ask_agent":   outputs.get("ask_agent") or "",
     }
 
 
 # ── GUARD: pipeline already completed ─────────────────────────────────────────
-# If step 8 is done and status is "running", there is nothing left to do.
-# Without this guard the entire bottom half of the pipeline re-executes on
-# every subsequent Actions trigger, firing 4 LLM calls and ~12 s of sleeps.
 if state_step >= 8 and status == "running":
     exit(0)
 
@@ -82,21 +82,23 @@ if status == "qa":
     ingested = ingestion.run(pr)
     diff = ingested["diff"]
 
-    qa_status, payload = check_qa_comment(PR_NUMBER)
+    # check_qa_comment now accepts the pr object — no third get_pr() call inside
+    qa_status, payload = check_qa_comment(pr)
 
     if qa_status == "approved":
-        update_state(PR_NUMBER, 8, "running")
+        # update_state accepts pr object — no fourth get_pull() inside db.py
+        update_state(pr, 8, "running")
         data = load_cached_outputs()
         post_new(coordinator.build_approval_summary(data))
 
     elif qa_status == "rejected":
-        update_state(PR_NUMBER, 8, "rejected")
+        update_state(pr, 8, "rejected")
         data = load_cached_outputs()
         post_new(coordinator.build_rejection_summary("Step 8 (Final Approval)", data))
 
     elif qa_status == "done":
         post_new(coordinator.format_qa_done(payload))
-        update_state(PR_NUMBER, state_step, "running")
+        update_state(pr, state_step, "running")
         post_box("approval_step_8", coordinator.format_waiting_approval(8))
 
     elif qa_status == "question":
@@ -116,7 +118,7 @@ early = early_policy.run(pr)
 post_box("early_policy", coordinator.format_early_policy(early))
 
 # ── APPROVAL GATE 1 (Step 3) ──────────────────────────────────────────────────
-approved_3, msg_3 = approval_step_3.run(PR_NUMBER)
+approved_3, msg_3 = approval_step_3.run(pr)
 
 if not approved_3:
     if "Rejected" in msg_3:
@@ -128,7 +130,7 @@ if not approved_3:
 approver_3 = msg_3.split("by ")[-1] if "by " in msg_3 else "reviewer"
 post_box("approval_step_3", coordinator.format_approval_granted(3, approver_3))
 
-# ── STEP 3: Analysis agents — save raw output into each comment ───────────────
+# ── STEP 3: Analysis agents ───────────────────────────────────────────────────
 summary = summarizer.run(diff)
 post_box("summary", coordinator.format_summary(summary), raw_data=summary)
 
@@ -142,4 +144,4 @@ questions = ask_agent.run(diff)
 post_box("ask_agent", coordinator.format_ask_agent(questions), raw_data=questions)
 
 # ── Enter Q&A mode ────────────────────────────────────────────────────────────
-update_state(PR_NUMBER, state_step, "qa")
+update_state(pr, state_step, "qa")

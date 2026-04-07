@@ -17,7 +17,7 @@ def get_task(db: Session, task_id: int):
 def update_task(db: Session, task_id: int, data):
     task = get_task(db, task_id)
     if not task:
-        return None
+
     for key, value in data.dict(exclude_unset=True).items():
         setattr(task, key, value)
     db.commit()

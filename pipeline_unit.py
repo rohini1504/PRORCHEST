@@ -23,8 +23,7 @@ class PipelineUnit:
         self.counter += 1
         return entry
 
-    def get_entries(self):
-        return self.store
+    
 
     def update_status(self, entry_id, status):
         for e in self.store:

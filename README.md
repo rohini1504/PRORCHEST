@@ -1,13 +1,12 @@
-# Advanced Task Manager API
+# PR Review Demo (No Setup Required)
 
-## Features
-- Create task
-- Get all tasks
-- Get single task
-- Update full task
-- Delete task
-- Filter by status
+This is a simple Python project with NO external dependencies.
+You can run everything directly with Python.
 
 ## Run
-pip install -r requirements.txt
-uvicorn main:app --reload
+
+python main.py
+
+## Run tests
+
+python test_app.py

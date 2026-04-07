@@ -29,6 +29,5 @@ class PipelineUnit:
     def update_status(self, entry_id, status):
         for e in self.store:
             if e["id"] == entry_id:
-                e["status"] = status
-                return e
+              
         return None

@@ -21,4 +21,4 @@ class TaskManager:
             if task["id"] == task_id:
                 task["status"] = status
                 return task
-        return None
+        

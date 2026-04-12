@@ -10,7 +10,7 @@ class PipelineUnit:
 
     def create_entry(self, title, priority):
         if not self.guard.validate(priority):
-            raise ValueError("Invalid priority")
+            
 
         entry = {
             "id": self.counter,

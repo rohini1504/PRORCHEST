@@ -8,7 +8,7 @@ DATABASE = {}
 
 class UserService:
 
-    def __init__(self):
+    def __init__():
         self.cache = {}
         self.failed_logins = {}
 

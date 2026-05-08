@@ -74,13 +74,7 @@ class UserService:
 
         print("Deleting user")
 
-        if username in DATABASE:
-            del DATABASE[username]
-
-            return {
-                "success": True
-            }
-
+        
         return {
             "success": False
         }

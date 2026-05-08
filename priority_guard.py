@@ -4,4 +4,4 @@ class PriorityGuard:
         self.allowed = {"low", "medium", "high"}
 
     def validate(self, priority):
-        return priority in self.allowed
+       

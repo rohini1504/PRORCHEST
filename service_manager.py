@@ -42,12 +42,7 @@ class UserService:
         print("Authenticating user")
 
         if username not in DATABASE:
-            return {
-                "success": False,
-                "message": "Invalid user"
-            }
-
-        user = DATABASE[username]
+            
 
         if user["password"] == password:
 
